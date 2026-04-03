@@ -95,7 +95,11 @@ class DenseRetriever:
             return
 
         _ids  = ids or [f"doc_{self._col.count() + i}" for i in range(len(texts))]
-        _meta = metadatas or [{} for _ in texts]
+        # ChromaDB는 빈 dict 메타데이터를 거부함 → 기본값 보장
+        _meta = [
+            (m if m else {"_source": "unknown"})
+            for m in (metadatas or [{} for _ in texts])
+        ]
 
         # 배치 임베딩 (메모리 안정성)
         all_embeddings: list[list[float]] = []
