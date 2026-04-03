@@ -1,0 +1,49 @@
+# config.yaml.example — 이 파일을 config.yaml로 복사 후 값 채우기
+# 실제 config.yaml은 .gitignore에 포함됨 (커밋 금지)
+
+# Ollama 설정
+ollama:
+  host: "http://localhost:11434"
+  model: "qwen2.5:14b"          # 7b / 14b / 32b 중 택1
+  keep_alive: -1
+  warmup_on_start: true
+
+# RAG 설정
+rag:
+  chroma_path: "data/chroma_db"
+  bm25_path: "data/bm25_index.pkl"
+  top_k_dense: 20
+  top_k_sparse: 20
+  top_k_final: 5
+  rerank_cache_minutes: 5
+  cold_start_threshold: 10      # 메모리 10개 미만이면 RAG 건너뜀
+
+# DB 설정
+database:
+  path: "data/assistant.db"
+  # 암호화 키는 keyring에서 자동 로드 (여기 입력 금지)
+
+# Google API (client_secret.json 경로)
+google:
+  credentials_path: "client_secret.json"   # .gitignore에 포함됨
+  calendar_scopes:
+    - "https://www.googleapis.com/auth/calendar"
+  gmail_scopes:
+    - "https://www.googleapis.com/auth/gmail.readonly"
+    - "https://www.googleapis.com/auth/gmail.compose"
+
+# Streamlit 설정
+streamlit:
+  host: "127.0.0.1"             # 0.0.0.0 절대 금지
+  port: 8501
+  max_history_turns: 100
+
+# 성능
+performance:
+  max_tokens: 28000
+  priority_queue_workers: 2
+
+# 로깅
+logging:
+  level: "INFO"                 # DEBUG / INFO / WARNING / ERROR
+  file: "logs/assistant.log"
