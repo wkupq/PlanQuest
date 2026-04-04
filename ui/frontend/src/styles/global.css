@@ -1,0 +1,682 @@
+/* ============ Plan-Quest - 글로벌 스타일 ============ */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: #C4A882;
+  overflow: hidden;
+  user-select: none;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============ 상단 바 ============ */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  z-index: 100;
+}
+
+.heart-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 200, 200, 0.6);
+  border-radius: 20px;
+  padding: 6px 16px;
+}
+
+.heart-icon {
+  font-size: 22px;
+  color: #e74c3c;
+}
+
+.heart-count {
+  font-size: 18px;
+  font-weight: 700;
+  color: #8B4513;
+}
+
+.level-badge {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #8B4513;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.top-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(139, 90, 43, 0.3);
+  color: #5D3A1A;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.icon-btn:hover {
+  background: rgba(139, 90, 43, 0.5);
+  transform: scale(1.05);
+}
+
+/* ============ 2.5D 아이소메트릭 그리드 (수정됨) ============ */
+/* ============ 2.5D 아이소메트릭 그리드 (수정됨) ============ */
+.iso-container {
+  flex: 1;
+  width: 100%;
+  position: relative; /* 맵을 이 구역 안에 가두는 역할 */
+  overflow: hidden; /* 혹시 모를 삐져나옴 방지 */
+}
+
+.iso-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 65px);
+  grid-template-rows: repeat(8, 65px);
+  gap: 4px;
+  transform-style: preserve-3d;
+  
+  /* 🌟 마법의 강제 중앙 고정 코드! (어떤 크기든 무조건 한가운데로) */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* translate(-50%, -50%)를 먼저 써야 정확한 정중앙을 잡고 회전합니다 */
+  transform: translate(-50%, -50%) rotateX(60deg) rotateZ(-45deg);
+}
+
+.iso-tile {
+  width: 100%;
+  height: 100%;
+  background-color: #9DD49D;
+  border: 1px solid #7EC87E;
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+  
+  /* 🌟 흙 두께 대폭 증가: 그림자를 15겹으로 쌓아서 아주 두툼하게! */
+  box-shadow: 
+    -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
+    -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
+    -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
+    -10px 10px 0 #8A6B4E, -11px 11px 0 #8A6B4E, -12px 12px 0 #8A6B4E,
+    -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #6C523A; 
+    
+  transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.iso-tile:hover {
+  /* 🌟 두꺼워진 만큼 마우스를 올렸을 때 더 높이 떠오르게 */
+  transform: translate(5px, -5px);
+  background-color: #B5D59A;
+  box-shadow: 
+    -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
+    -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
+    -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
+    -10px 10px 0 #8A6B4E, -11px 11px 0 #8A6B4E, -12px 12px 0 #8A6B4E,
+    -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #8A6B4E,
+    -16px 16px 0 #8A6B4E, -17px 17px 0 #8A6B4E, -18px 18px 0 #8A6B4E,
+    -19px 19px 0 #8A6B4E, -20px 20px 0 #6C523A;
+}
+
+.iso-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  /* 🌟 타일이 커졌으니 이모지 크기도 대폭 확대 */
+  font-size: 52px; 
+  pointer-events: none; 
+  
+  /* 🌟 타일이 두꺼워졌으므로 이모지가 흙에 파묻히지 않도록 더 위로(-28px) 끌어올림 */
+  transform: rotateZ(45deg) rotateX(-60deg) translateY(-28px);
+  filter: drop-shadow(0 6px 6px rgba(0,0,0,0.3)); 
+}
+
+.item-heart {
+  position: absolute;
+  top: -24px;
+  font-size: 18px;
+  animation: float 2s ease-in-out infinite;
+  z-index: 20;
+}
+
+/* ─── 배치 모드 안내 ─── */
+.placement-guide {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #FFF8DC;
+  border: 2px solid #FFD700;
+  border-radius: 12px;
+  padding: 10px 20px;
+  color: #8B6914;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  animation: pulse 1.5s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.placement-cancel {
+  background: rgba(139, 105, 20, 0.15);
+  border: 1px solid #C4A882;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #8B6914;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: background 0.2s;
+}
+
+.placement-cancel:hover {
+  background: rgba(139, 105, 20, 0.3);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* ============ 나무 성장 단계 ============ */
+.tree-stage-0 .emoji::after { content: "🌱"; }
+.tree-stage-1 .emoji::after { content: "🌿"; }
+.tree-stage-2 .emoji::after { content: "🌲"; }
+.tree-stage-3 .emoji::after { content: "🎄"; }
+
+/* ============ 하단 네비게이션 ============ */
+.bottom-nav {
+  display: flex;
+  flex-direction: row; /* 🌟 버튼들을 강제로 가로로 나란히 배치 */
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px;
+  z-index: 100;
+  
+  /* 🌟 무조건 화면 맨 아랫바닥에 딱 붙여서 고정하는 코드 */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  
+  /* 맵 위로 글씨가 겹쳐 보이지 않도록 살짝 배경색 깔아주기 */
+  background: linear-gradient(transparent, rgba(196, 168, 130, 0.9) 30%, #C4A882);
+  padding-bottom: 24px; /* 바닥 여백을 조금 더 주어 안정감 있게 */
+}
+
+.nav-btn {
+  padding: 10px 24px;
+  border-radius: 16px;
+  border: none;
+  background: rgba(93, 58, 26, 0.15);
+  color: #5D3A1A;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: all 0.2s;
+}
+
+.nav-btn:hover {
+  background: rgba(93, 58, 26, 0.3);
+}
+
+.nav-btn.active {
+  background: #5D3A1A;
+  color: white;
+}
+
+/* ============ 모달 / 패널 ============ */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: #FDF8F0;
+  border-radius: 20px;
+  padding: 28px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #5D3A1A;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* ============ 습관 추가 폼 ============ */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #8B6914;
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 2px solid #E8D5B8;
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: 'Noto Sans KR', sans-serif;
+  background: white;
+  color: #5D3A1A;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus {
+  border-color: #C4A882;
+}
+
+.day-selector {
+  display: flex;
+  gap: 6px;
+}
+
+.day-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 2px solid #E8D5B8;
+  background: white;
+  color: #8B6914;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.day-btn.selected {
+  background: #5D8A5D;
+  color: white;
+  border-color: #5D8A5D;
+}
+
+.time-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.time-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #E8D5B8;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #5D3A1A;
+}
+
+.time-tag button {
+  background: none;
+  border: none;
+  color: #B8956A;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.add-time-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px dashed #C4A882;
+  background: none;
+  color: #C4A882;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  background: #5D8A5D;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: background 0.2s;
+  margin-top: 8px;
+}
+
+.submit-btn:hover {
+  background: #4A7A4A;
+}
+
+.cancel-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: #B8956A;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  margin-top: 4px;
+}
+
+/* ============ 습관 리스트 ============ */
+.habit-card {
+  background: white;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 0.2s;
+}
+
+.habit-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.habit-check {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid #C4A882;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.habit-check.done {
+  background: #5D8A5D;
+  border-color: #5D8A5D;
+  color: white;
+}
+
+.habit-info {
+  flex: 1;
+}
+
+.habit-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #5D3A1A;
+}
+
+.habit-title.completed {
+  text-decoration: line-through;
+  color: #B8956A;
+}
+
+.habit-streak {
+  font-size: 12px;
+  color: #B8956A;
+  margin-top: 2px;
+}
+
+.habit-reward {
+  font-size: 14px;
+  color: #e74c3c;
+}
+
+.habit-delete {
+  background: none;
+  border: none;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+}
+
+.habit-delete:hover {
+  color: #e74c3c;
+}
+
+/* ============ 상점 ============ */
+.shop-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.shop-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 10px;
+  border: 2px solid #E8D5B8;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: #8B6914;
+  transition: all 0.2s;
+}
+
+.shop-tab.active {
+  background: #5D3A1A;
+  color: white;
+  border-color: #5D3A1A;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.shop-card {
+  background: white;
+  border-radius: 14px;
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+  position: relative;
+}
+
+.shop-card:hover {
+  border-color: #C4A882;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.shop-card.owned {
+  opacity: 0.5;
+  border-color: #5D8A5D;
+}
+
+.shop-card .emoji {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.shop-card .name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #5D3A1A;
+  margin-bottom: 4px;
+}
+
+.shop-card .price {
+  font-size: 12px;
+  color: #e74c3c;
+}
+
+.rarity-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.rarity-common { background: #E8E8E8; color: #666; }
+.rarity-rare { background: #D4E8FF; color: #2C6CB5; }
+.rarity-epic { background: #E8D4FF; color: #7B2CB5; }
+.rarity-legendary { background: #FFE8B8; color: #B57B2C; }
+
+/* ============ 인벤토리 ============ */
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.inventory-item {
+  background: white;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: center;
+  cursor: grab;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.inventory-item:hover {
+  border-color: #5D8A5D;
+  transform: scale(1.05);
+}
+
+.inventory-item .emoji {
+  font-size: 28px;
+}
+
+.inventory-item .name {
+  font-size: 10px;
+  color: #8B6914;
+  margin-top: 2px;
+}
+
+/* ============ 하트 획득 애니메이션 ============ */
+.heart-earn-anim {
+  position: fixed;
+  font-size: 24px;
+  color: #e74c3c;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 9999;
+  animation: heartFloat 1.5s ease-out forwards;
+}
+
+@keyframes heartFloat {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
+}
+
+/* ============ 토스트 메시지 ============ */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #5D3A1A;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 14px;
+  z-index: 9999;
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 2s forwards;
+  white-space: nowrap;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ============ 배치 모드 애니메이션 ============ */
+@keyframes pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.05); }
+}
+
+/* ============ 스크롤바 ============ */
+.modal-content::-webkit-scrollbar {
+  width: 6px;
+}
+.modal-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.modal-content::-webkit-scrollbar-thumb {
+  background: #D4B89C;
+  border-radius: 10px;
+}
