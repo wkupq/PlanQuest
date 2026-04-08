@@ -57,7 +57,7 @@ def rrf_search(query: str, top_k: int = 3):
         reverse=True
     )[:top_k]
 
-    print(f"\n✅ RRF 최종 결과:")
+    print(f"\nRRF 최종 결과:")
     for i, (doc, score) in enumerate(final_results):
         print(f"  {i+1}위 (점수: {score:.4f}): {doc}")
 

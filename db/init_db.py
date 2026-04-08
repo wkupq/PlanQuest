@@ -24,7 +24,7 @@ def init_db():
 
     conn.commit()
     conn.close()
-    print("✅ assistant.db 초기화 완료")
+    print("assistant.db 초기화 완료")
 
 if __name__ == "__main__":
     init_db()

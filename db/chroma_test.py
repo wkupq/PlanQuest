@@ -11,11 +11,11 @@ collection.add(
     documents=["오늘 오전 9시에 팀 회의가 있다"],
     ids=["mem_001"]
 )
-print("✅ 벡터 저장 성공")
+print("벡터 저장 성공")
 
 # 저장한 벡터 조회
 results = collection.query(
     query_texts=["회의 일정"],
     n_results=1
 )
-print("✅ 조회 결과:", results["documents"][0][0])
+print("조회 결과:", results["documents"][0][0])

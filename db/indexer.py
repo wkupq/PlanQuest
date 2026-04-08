@@ -21,7 +21,7 @@ def add_documents(documents: list[str], ids: list[str]):
         documents=documents,
         ids=ids
     )
-    print(f"✅ ChromaDB 저장 완료: {len(documents)}개")
+    print(f"ChromaDB 저장 완료: {len(documents)}개")
 
     # 2. BM25 인덱스 구축 (키워드 검색용)
     tokenized = [tokenize(doc) for doc in documents]
@@ -34,7 +34,7 @@ def add_documents(documents: list[str], ids: list[str]):
             "documents": documents,
             "ids": ids
         }, f)
-    print("✅ BM25 인덱스 저장 완료")
+    print("BM25 인덱스 저장 완료")
 
 def load_bm25():
     """저장된 BM25 인덱스 불러오기"""
@@ -60,4 +60,4 @@ if __name__ == "__main__":
     query = "회의 일정"
     scores = data["bm25"].get_scores(tokenize(query))
     best_idx = scores.argmax()
-    print(f"✅ BM25 검색 결과: '{data['documents'][best_idx]}'")
+    print(f"BM25 검색 결과: '{data['documents'][best_idx]}'")
