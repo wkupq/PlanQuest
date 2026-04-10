@@ -96,16 +96,14 @@ body {
 
 .iso-grid {
   display: grid;
-  grid-template-columns: repeat(8, 65px);
-  grid-template-rows: repeat(8, 65px);
-  gap: 4px;
+  grid-template-columns: repeat(8, 100px);
+  grid-template-rows: repeat(8, 100px);
+  gap: 3px;
   transform-style: preserve-3d;
-  
-  /* 🌟 마법의 강제 중앙 고정 코드! (어떤 크기든 무조건 한가운데로) */
+
   position: absolute;
   top: 50%;
   left: 50%;
-  /* translate(-50%, -50%)를 먼저 써야 정확한 정중앙을 잡고 회전합니다 */
   transform: translate(-50%, -50%) rotateX(60deg) rotateZ(-45deg);
 }
 
@@ -117,23 +115,21 @@ body {
   border-radius: 4px;
   position: relative;
   cursor: pointer;
-  
-  /* 🌟 흙 두께 대폭 증가: 그림자를 15겹으로 쌓아서 아주 두툼하게! */
-  box-shadow: 
+
+  box-shadow:
     -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
     -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
     -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
     -10px 10px 0 #8A6B4E, -11px 11px 0 #8A6B4E, -12px 12px 0 #8A6B4E,
-    -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #6C523A; 
-    
+    -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #6C523A;
+
   transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
 
 .iso-tile:hover {
-  /* 🌟 두꺼워진 만큼 마우스를 올렸을 때 더 높이 떠오르게 */
   transform: translate(5px, -5px);
   background-color: #B5D59A;
-  box-shadow: 
+  box-shadow:
     -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
     -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
     -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
@@ -159,6 +155,58 @@ body {
   /* 🌟 타일이 두꺼워졌으므로 이모지가 흙에 파묻히지 않도록 더 위로(-28px) 끌어올림 */
   transform: rotateZ(45deg) rotateX(-60deg) translateY(-28px);
   filter: drop-shadow(0 6px 6px rgba(0,0,0,0.3)); 
+}
+
+/* 배치 가능 타일 강조 */
+.tile-placeable {
+  cursor: crosshair;
+}
+
+/* ─── 캐릭터 이미지 (타일 위에 3D로 서있기) ─── */
+.character-on-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.char-img-on-tile {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  image-rendering: auto;
+  pointer-events: none;
+}
+
+/* 캐릭터 아래 타원형 그림자 */
+.char-shadow {
+  width: 50px;
+  height: 14px;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.25) 0%, transparent 70%);
+  border-radius: 50%;
+  margin-top: -6px;
+}
+
+/* ─── 상점 카드 이미지 ─── */
+.shop-card-image {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.shop-char-img {
+  max-width: 55px;
+  max-height: 55px;
+  object-fit: contain;
+}
+
+/* ─── 인벤토리 이미지 ─── */
+.inventory-char-img {
+  width: 45px;
+  height: 45px;
+  object-fit: contain;
 }
 
 .item-heart {
@@ -679,4 +727,226 @@ body {
 .modal-content::-webkit-scrollbar-thumb {
   background: #D4B89C;
   border-radius: 10px;
+}
+
+/* ============ 달성률 패널 ============ */
+.icon-btn-active {
+  background: rgba(93, 58, 26, 0.6) !important;
+  color: white !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.routine-circle-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 8px auto 16px;
+}
+
+.routine-circle-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.routine-percent {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.routine-fraction {
+  font-size: 14px;
+  color: #B8956A;
+  font-weight: 500;
+}
+
+.routine-message {
+  text-align: center;
+  font-size: 14px;
+  color: #5D3A1A;
+  font-weight: 500;
+  padding: 10px 16px;
+  background: #FFF8F0;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.routine-stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.routine-stat-card {
+  flex: 1;
+  background: white;
+  border-radius: 14px;
+  padding: 12px 8px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.routine-stat-icon {
+  font-size: 20px;
+}
+
+.routine-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #5D3A1A;
+}
+
+.routine-stat-label {
+  font-size: 11px;
+  color: #B8956A;
+  font-weight: 500;
+}
+
+.routine-list-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5D3A1A;
+  margin-bottom: 10px;
+}
+
+.routine-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.routine-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: white;
+  border-radius: 12px;
+  border-left: 4px solid #FF9800;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s;
+}
+
+.routine-item-done {
+  border-left-color: #4CAF50;
+  background: #F5FFF5;
+}
+
+.routine-item-check {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.routine-item-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5D3A1A;
+}
+
+.routine-item-done .routine-item-title {
+  text-decoration: line-through;
+  color: #B8956A;
+}
+
+.routine-item-reward {
+  font-size: 12px;
+  color: #e74c3c;
+  flex-shrink: 0;
+}
+
+.routine-item-streak {
+  font-size: 11px;
+  color: #FF9800;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+/* ============ 스트리밍 커서 ============ */
+.streaming-cursor {
+  display: inline-block;
+  animation: blink 0.7s infinite;
+  color: #5D8A5D;
+  font-weight: bold;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* ============ Ollama 팝업 ============ */
+.ollama-popup-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.ollama-popup {
+  background: white;
+  border-radius: 16px;
+  padding: 30px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.ollama-popup h2 {
+  color: #5D3A1A;
+  margin-bottom: 12px;
+  font-size: 20px;
+}
+
+.ollama-popup p {
+  color: #8B6914;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.ollama-popup code {
+  background: #F5F0E8;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #5D3A1A;
+}
+
+.ollama-popup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.ollama-popup-actions button {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ollama-popup-actions .primary-btn {
+  background: #5D8A5D;
+  color: white;
+}
+
+.ollama-popup-actions .secondary-btn {
+  background: #E8D5B8;
+  color: #5D3A1A;
 }

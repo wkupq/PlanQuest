@@ -7,6 +7,8 @@ import InventoryPanel from './components/InventoryPanel';
 import HabitForm from './components/HabitForm';
 import ChatDashboard from './components/ChatDashboard';
 import CalendarPanel from './components/CalendarPanel';
+import RoutinePanel from './components/RoutinePanel';
+import OllamaPopup from './components/OllamaPopup';
 import Toast from './components/Toast';
 
 export default function App() {
@@ -22,6 +24,8 @@ export default function App() {
 
   // 배치 모드: { ownedItemId, emoji, name } 또는 null
   const [placementMode, setPlacementMode] = useState(null);
+  const [ollamaStatus, setOllamaStatus] = useState(null);
+  const [showOllamaPopup, setShowOllamaPopup] = useState(false);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -50,6 +54,22 @@ export default function App() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Ollama 상태 확인 (앱 시작 시)
+  const checkOllama = useCallback(async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat/health');
+      const data = await res.json();
+      setOllamaStatus(data);
+      if (!data.ollama_installed || !data.ollama_running) {
+        setShowOllamaPopup(true);
+      }
+    } catch {
+      // 백엔드 미실행 시 무시
+    }
+  }, []);
+
+  useEffect(() => { checkOllama(); }, [checkOllama]);
+
   const handleTreeClick = async (tree) => {
     if (tree.hearts_available <= 0) return;
     try {
@@ -74,7 +94,11 @@ export default function App() {
           <span className="level-badge">Lv.{user.level}</span>
         </div>
         <div className="top-buttons">
-          <button className="icon-btn" title="설정">&#9881;</button>
+          <button
+            className={`icon-btn ${activePanel === 'routine' ? 'icon-btn-active' : ''}`}
+            onClick={() => setActivePanel(activePanel === 'routine' ? null : 'routine')}
+            title="달성률"
+          >📊</button>
           <button className="icon-btn" onClick={() => setActivePanel(activePanel === 'inventory' ? null : 'inventory')} title="인벤토리">&#128230;</button>
           <button className="icon-btn" onClick={() => setShowHabitForm(true)} title="일정 추가">&#43;</button>
         </div>
@@ -168,12 +192,28 @@ export default function App() {
         />
       )}
 
+      {activePanel === 'routine' && (
+        <RoutinePanel
+          habits={habits}
+          onClose={() => setActivePanel(null)}
+        />
+      )}
+
       {/* 일정 추가 폼 */}
       {showHabitForm && (
         <HabitForm
           onClose={() => setShowHabitForm(false)}
           onRefresh={refresh}
           showToast={showToast}
+        />
+      )}
+
+      {/* Ollama 미설치/미실행 팝업 */}
+      {showOllamaPopup && ollamaStatus && (
+        <OllamaPopup
+          status={ollamaStatus}
+          onClose={() => setShowOllamaPopup(false)}
+          onRetry={() => { checkOllama(); }}
         />
       )}
 
