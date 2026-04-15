@@ -51,6 +51,16 @@ def save_memory(memory_type: str, content: str):
     conn.close()
     print(f"{memory_type} 메모리 저장 완료 (만료: {expires_at.strftime('%Y-%m-%d')})")
 
+    # 퀘스트 훅 호출
+    if memory_type == "conversation":
+        on_conversation_saved(content)
+    elif memory_type == "email":
+        on_email_saved(content)
+    elif memory_type == "calendar":
+        on_calendar_saved(content)
+
+
+
 def delete_expired_memories():
     """만료된 메모리 자동 삭제"""
     conn = sqlite3.connect(DB_PATH)
@@ -92,3 +102,31 @@ if __name__ == "__main__":
 
     # 4. 만료 메모리 삭제 테스트
     delete_expired_memories()
+
+    # 퀘스트 이벤트 훅
+def on_conversation_saved(content: str):
+    """대화 저장될 때마다 퀘스트 진행도 업데이트"""
+    count = get_memory_count()
+    conv_count = next(
+        (c for t, c in count if t == "conversation"), 0
+    )
+    print(f"퀘스트 진행 - 오늘 대화: {conv_count}번")
+    return conv_count
+
+def on_email_saved(content: str):
+    """이메일 저장될 때마다 퀘스트 진행도 업데이트"""
+    count = get_memory_count()
+    email_count = next(
+        (c for t, c in count if t == "email"), 0
+    )
+    print(f"퀘스트 진행 - 이메일 확인: {email_count}개")
+    return email_count
+
+def on_calendar_saved(content: str):
+    """일정 저장될 때마다 퀘스트 진행도 업데이트"""
+    count = get_memory_count()
+    calendar_count = next(
+        (c for t, c in count if t == "calendar"), 0
+    )
+    print(f"퀘스트 진행 - 일정 등록: {calendar_count}개")
+    return calendar_count
