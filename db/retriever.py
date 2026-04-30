@@ -24,7 +24,8 @@ def rrf_search(query: str, top_k: int = 3):
         query_texts=[query],
         n_results=top_k
     )
-    chroma_docs = chroma_results["documents"][0]
+    documents = chroma_results["documents"]
+    chroma_docs: list[str] = documents[0] if documents else []
     print(f"ChromaDB 결과: {chroma_docs}")
 
     # 2. BM25 검색 (키워드 기반)
@@ -40,7 +41,7 @@ def rrf_search(query: str, top_k: int = 3):
 
     # 3. RRF 점수 계산
     k = 60  # RRF 상수 (보통 60 사용)
-    rrf_scores = {}
+    rrf_scores: dict[str, float] = {}
 
     # ChromaDB 순위로 점수 계산
     for rank, doc in enumerate(chroma_docs):

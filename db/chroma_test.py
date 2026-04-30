@@ -18,4 +18,5 @@ results = collection.query(
     query_texts=["회의 일정"],
     n_results=1
 )
-print("조회 결과:", results["documents"][0][0])
+documents: list[list[str]] = results["documents"] or [[]]
+print("조회 결과:", documents[0][0])

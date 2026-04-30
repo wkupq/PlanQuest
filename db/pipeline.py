@@ -36,8 +36,10 @@ def rrf_search(query: str, top_k: int = 3):
         include=["documents", "distances"]
     )
 
-    chroma_docs = chroma_results["documents"][0]
-    distances = chroma_results["distances"][0]
+    documents = chroma_results["documents"]
+    distances_raw = chroma_results["distances"]
+    chroma_docs: list[str] = documents[0] if documents else []
+    distances: list[float] = distances_raw[0] if distances_raw else []
 
     print(f"가장 유사한 문서 거리값: {min(distances):.2f}")
 
@@ -61,7 +63,7 @@ def rrf_search(query: str, top_k: int = 3):
 
     # RRF 점수 계산
     k = 60
-    rrf_scores = {}
+    rrf_scores: dict[str, float] = {}
     for rank, doc in enumerate(chroma_docs):
         rrf_scores[doc] = rrf_scores.get(doc, 0) + 1 / (k + rank + 1)
     for rank, doc in enumerate(bm25_docs):
