@@ -57,3 +57,12 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Credentials / OAuth (절대 커밋 X)
+.plan-quest/
+credentials.json
+*token*.json
+*secret*.json
+
+# ChromaDB local store
+chroma_db/

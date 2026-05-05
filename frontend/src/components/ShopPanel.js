@@ -3,10 +3,14 @@ import { getShopItems, buyItem } from '../api';
 
 const CATEGORIES = [
   { key: null, label: '전체' },
-  { key: 'animal', label: '동물' },
-  { key: 'tree', label: '나무/꽃' },
-  { key: 'building', label: '건물' },
+  { key: 'character', label: '캐릭터' },
 ];
+
+// 이미지 경로 헬퍼: image_url이 있으면 이미지 경로 반환
+const getImageSrc = (imageUrl) => {
+  if (!imageUrl) return null;
+  return `/images/characters/${imageUrl}`;
+};
 
 export default function ShopPanel({ userHearts, userLevel, onClose, onRefresh, showToast }) {
   const [items, setItems] = useState([]);
@@ -25,7 +29,7 @@ export default function ShopPanel({ userHearts, userLevel, onClose, onRefresh, s
 
   const handleBuy = async (item) => {
     if (item.owned) {
-      showToast('이미 소유한 아이템이에요!');
+      showToast('이미 소유한 캐릭터예요!');
       return;
     }
     if (userLevel < item.unlock_level) {
@@ -72,6 +76,8 @@ export default function ShopPanel({ userHearts, userLevel, onClose, onRefresh, s
         <div className="shop-grid">
           {items.map((item) => {
             const locked = userLevel < item.unlock_level;
+            const imgSrc = getImageSrc(item.image_url);
+
             return (
               <div
                 key={item.id}
@@ -80,7 +86,28 @@ export default function ShopPanel({ userHearts, userLevel, onClose, onRefresh, s
                 style={locked ? { opacity: 0.35, cursor: 'not-allowed' } : {}}
               >
                 <span className={`rarity-badge rarity-${item.rarity}`}>{item.rarity}</span>
-                <span className="emoji">{locked ? '🔒' : item.emoji}</span>
+
+                {/* 이미지가 있으면 이미지, 없으면 이모지 */}
+                <div className="shop-card-image">
+                  {locked ? (
+                    <span className="emoji">🔒</span>
+                  ) : imgSrc ? (
+                    <img
+                      src={imgSrc}
+                      alt={item.name}
+                      className="shop-char-img"
+                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                    />
+                  ) : null}
+                  {/* 이미지 로드 실패 시 또는 이미지 없을 때 이모지 표시 */}
+                  <span
+                    className="emoji"
+                    style={{ display: (imgSrc && !locked) ? 'none' : 'block' }}
+                  >
+                    {item.emoji}
+                  </span>
+                </div>
+
                 <div className="name">{item.name}</div>
                 <div className="price">
                   {item.owned ? '보유중' : `❤ ${item.price}`}

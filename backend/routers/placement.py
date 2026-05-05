@@ -25,6 +25,7 @@ def get_placed_items(db: Session = Depends(get_db)):
                 grid_y=p.grid_y,
                 item_name=item.name,
                 item_emoji=item.emoji,
+                item_image_url=item.image_url or "",
                 item_category=item.category,
             ))
     return result
@@ -51,7 +52,7 @@ def place_item(req: PlaceItemRequest, db: Session = Depends(get_db)):
         return PlacedItemResponse(
             id=existing.id, owned_item_id=existing.owned_item_id,
             grid_x=existing.grid_x, grid_y=existing.grid_y,
-            item_name=item.name, item_emoji=item.emoji, item_category=item.category,
+            item_name=item.name, item_emoji=item.emoji, item_image_url=item.image_url or "", item_category=item.category,
         )
 
     placed = PlacedItem(user_id=1, owned_item_id=owned.id, grid_x=req.grid_x, grid_y=req.grid_y)
@@ -63,7 +64,7 @@ def place_item(req: PlaceItemRequest, db: Session = Depends(get_db)):
     return PlacedItemResponse(
         id=placed.id, owned_item_id=placed.owned_item_id,
         grid_x=placed.grid_x, grid_y=placed.grid_y,
-        item_name=item.name, item_emoji=item.emoji, item_category=item.category,
+        item_name=item.name, item_emoji=item.emoji, item_image_url=item.image_url or "", item_category=item.category,
     )
 
 

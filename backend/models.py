@@ -39,14 +39,15 @@ class Habit(Base):
 
 
 class ShopItem(Base):
-    """상점 아이템 (동물/나무/건물)"""
+    """상점 아이템 (캐릭터/건물/장식)"""
     __tablename__ = "shop_items"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
-    category = Column(String, nullable=False)  # animal, tree, building
+    category = Column(String, nullable=False)  # character, building, decoration
     price = Column(Integer, nullable=False)
-    emoji = Column(String, nullable=False)  # 이모지로 아이콘 표현
+    emoji = Column(String, nullable=False)  # 이미지 없을 때 대체용
+    image_url = Column(String, default="")  # 캐릭터 이미지 경로 (예: /images/characters/cat.png)
     description = Column(String, default="")
     rarity = Column(String, default="common")  # common, rare, epic, legendary
     unlock_level = Column(Integer, default=1)
@@ -93,3 +94,36 @@ class TreeOnMap(Base):
     last_harvest = Column(DateTime, nullable=True)
 
     habit = relationship("Habit")
+
+
+class UserMemory(Base):
+    """사용자 맥락 기억 (RAG 메모리 - ChromaDB 와 함께 사용).
+
+    ChromaDB 가 벡터 검색을 처리하고, 이 테이블은 메타데이터/원문 보존용.
+    importance_score 가 임계값 엔진의 정리 기준.
+    """
+    __tablename__ = "user_memory"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("user_profile.id"), default=1)
+
+    # 메모리 종류
+    # - "conversation" : 사용자-AI 대화 한 턴
+    # - "habit"        : 사용자가 추가/완료한 습관에 대한 맥락
+    # - "preference"   : 사용자 선호도 (좋아하는 캐릭터, 활동 시간 등)
+    # - "game_event"   : 게임 내 이벤트 (캐릭터 구매, 큰 일정 달성 등)
+    memory_type = Column(String, nullable=False, default="conversation")
+
+    content = Column(String, nullable=False)  # 원문 텍스트
+    chroma_id = Column(String, default="")    # ChromaDB 벡터 ID (참조용)
+
+    # 임계값 엔진:
+    # - 0.0 ~ 1.0 (높을수록 중요)
+    # - 0.3 미만 + 30일 이상이면 자동 정리
+    importance_score = Column(Float, default=0.5)
+
+    # 자주 검색되는 메모리는 점수 가중 → 살아남음
+    access_count = Column(Integer, default=0)
+    last_accessed = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)

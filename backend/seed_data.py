@@ -1,40 +1,66 @@
-"""상점 초기 데이터 시드"""
+"""상점 초기 데이터 시드 - 이미지 기반 캐릭터 시스템"""
 from database import engine, SessionLocal, Base
 from models import ShopItem, UserProfile
 
+# === 캐릭터 이미지 기반 상점 아이템 ===
+# image_url: frontend/public/images/characters/ 폴더 안의 PNG 파일명
+# 이미지를 추가하면 자동으로 상점에 표시됩니다
 SHOP_ITEMS = [
-    # === 동물 (Animals) ===
-    {"name": "아기 고양이", "category": "animal", "price": 3, "emoji": "🐱", "description": "귀여운 아기 고양이", "rarity": "common", "unlock_level": 1},
-    {"name": "강아지", "category": "animal", "price": 5, "emoji": "🐶", "description": "충성스러운 강아지", "rarity": "common", "unlock_level": 1},
-    {"name": "토끼", "category": "animal", "price": 4, "emoji": "🐰", "description": "깡충깡충 토끼", "rarity": "common", "unlock_level": 1},
-    {"name": "병아리", "category": "animal", "price": 2, "emoji": "🐥", "description": "노란 병아리", "rarity": "common", "unlock_level": 1},
-    {"name": "다람쥐", "category": "animal", "price": 6, "emoji": "🐿️", "description": "도토리를 모으는 다람쥐", "rarity": "rare", "unlock_level": 2},
-    {"name": "여우", "category": "animal", "price": 8, "emoji": "🦊", "description": "영리한 여우", "rarity": "rare", "unlock_level": 3},
-    {"name": "사슴", "category": "animal", "price": 10, "emoji": "🦌", "description": "우아한 사슴", "rarity": "rare", "unlock_level": 3},
-    {"name": "부엉이", "category": "animal", "price": 12, "emoji": "🦉", "description": "지혜로운 부엉이", "rarity": "epic", "unlock_level": 5},
-    {"name": "유니콘", "category": "animal", "price": 20, "emoji": "🦄", "description": "전설의 유니콘", "rarity": "legendary", "unlock_level": 7},
-    {"name": "용", "category": "animal", "price": 30, "emoji": "🐉", "description": "전설의 드래곤", "rarity": "legendary", "unlock_level": 10},
+    # === 캐릭터 (Character) ===
+    # image_url에 실제 이미지 파일명을 넣으세요 (예: "blue_dragon.png")
+    # 이미지가 없으면 emoji가 대체로 표시됩니다
 
-    # === 나무/꽃 (Trees/Flowers) ===
-    {"name": "벚꽃나무", "category": "tree", "price": 4, "emoji": "🌸", "description": "분홍빛 벚꽃나무", "rarity": "common", "unlock_level": 1},
-    {"name": "소나무", "category": "tree", "price": 3, "emoji": "🌲", "description": "푸른 소나무", "rarity": "common", "unlock_level": 1},
-    {"name": "야자수", "category": "tree", "price": 5, "emoji": "🌴", "description": "열대 야자수", "rarity": "common", "unlock_level": 1},
-    {"name": "해바라기", "category": "tree", "price": 2, "emoji": "🌻", "description": "밝은 해바라기", "rarity": "common", "unlock_level": 1},
-    {"name": "튤립", "category": "tree", "price": 2, "emoji": "🌷", "description": "알록달록 튤립", "rarity": "common", "unlock_level": 1},
-    {"name": "장미", "category": "tree", "price": 3, "emoji": "🌹", "description": "빨간 장미", "rarity": "common", "unlock_level": 2},
-    {"name": "단풍나무", "category": "tree", "price": 7, "emoji": "🍁", "description": "가을빛 단풍나무", "rarity": "rare", "unlock_level": 3},
-    {"name": "대나무", "category": "tree", "price": 6, "emoji": "🎋", "description": "바람에 흔들리는 대나무", "rarity": "rare", "unlock_level": 3},
-    {"name": "세계수", "category": "tree", "price": 25, "emoji": "🌳", "description": "거대한 세계수", "rarity": "legendary", "unlock_level": 8},
+    # --- Common (Lv.1) ---
+    {"name": "불꽃공룡", "category": "character", "price": 3, "emoji": "🦖",
+     "image_url": "flame_dino.png",
+     "description": "머리에 불꽃 왕관을 쓴 아기 공룡", "rarity": "common", "unlock_level": 1},
 
-    # === 건물/가구 (Buildings/Furniture) ===
-    {"name": "나무 벤치", "category": "building", "price": 3, "emoji": "🪑", "description": "쉬어갈 수 있는 벤치", "rarity": "common", "unlock_level": 1},
-    {"name": "가로등", "category": "building", "price": 4, "emoji": "🏮", "description": "따뜻한 가로등", "rarity": "common", "unlock_level": 1},
-    {"name": "우물", "category": "building", "price": 5, "emoji": "⛲", "description": "소원을 비는 우물", "rarity": "common", "unlock_level": 2},
-    {"name": "작은 오두막", "category": "building", "price": 8, "emoji": "🏡", "description": "아늑한 오두막", "rarity": "rare", "unlock_level": 3},
-    {"name": "풍차", "category": "building", "price": 10, "emoji": "🏗️", "description": "바람개비 풍차", "rarity": "rare", "unlock_level": 4},
-    {"name": "다리", "category": "building", "price": 6, "emoji": "🌉", "description": "작은 나무 다리", "rarity": "rare", "unlock_level": 3},
-    {"name": "성", "category": "building", "price": 25, "emoji": "🏰", "description": "웅장한 성", "rarity": "legendary", "unlock_level": 9},
-    {"name": "등대", "category": "building", "price": 15, "emoji": "🗼", "description": "바다를 비추는 등대", "rarity": "epic", "unlock_level": 6},
+    {"name": "물방울룡", "category": "character", "price": 3, "emoji": "🐉",
+     "image_url": "water_dragon.png",
+     "description": "물속성 아기 드래곤", "rarity": "common", "unlock_level": 1},
+
+    {"name": "숲토끼", "category": "character", "price": 3, "emoji": "🐰",
+     "image_url": "forest_rabbit.png",
+     "description": "숲에서 온 귀여운 토끼", "rarity": "common", "unlock_level": 1},
+
+    {"name": "불꽃여우", "category": "character", "price": 4, "emoji": "🦊",
+     "image_url": "fire_fox.png",
+     "description": "꼬리에 불꽃이 타오르는 여우", "rarity": "common", "unlock_level": 1},
+
+    {"name": "구름양", "category": "character", "price": 3, "emoji": "🐑",
+     "image_url": "cloud_sheep.png",
+     "description": "구름처럼 폭신한 양", "rarity": "common", "unlock_level": 1},
+
+    # --- Rare (Lv.3) ---
+    {"name": "번개호랑이", "category": "character", "price": 8, "emoji": "🐯",
+     "image_url": "thunder_tiger.png",
+     "description": "번개를 두른 호랑이", "rarity": "rare", "unlock_level": 3},
+
+    {"name": "달빛사슴", "category": "character", "price": 8, "emoji": "🦌",
+     "image_url": "moon_deer.png",
+     "description": "뿔에서 달빛이 나는 사슴", "rarity": "rare", "unlock_level": 3},
+
+    {"name": "바람매", "category": "character", "price": 10, "emoji": "🦅",
+     "image_url": "wind_hawk.png",
+     "description": "바람을 가르는 매", "rarity": "rare", "unlock_level": 3},
+
+    # --- Epic (Lv.5) ---
+    {"name": "얼음늑대", "category": "character", "price": 15, "emoji": "🐺",
+     "image_url": "ice_wolf.png",
+     "description": "얼음 갑옷을 입은 늑대", "rarity": "epic", "unlock_level": 5},
+
+    {"name": "크리스탈곰", "category": "character", "price": 18, "emoji": "🐻",
+     "image_url": "crystal_bear.png",
+     "description": "수정으로 빛나는 곰", "rarity": "epic", "unlock_level": 5},
+
+    # --- Legendary (Lv.8) ---
+    {"name": "천상의유니콘", "category": "character", "price": 30, "emoji": "🦄",
+     "image_url": "celestial_unicorn.png",
+     "description": "하늘에서 내려온 유니콘", "rarity": "legendary", "unlock_level": 8},
+
+    {"name": "고대용", "category": "character", "price": 50, "emoji": "🐲",
+     "image_url": "ancient_dragon.png",
+     "description": "전설 속 고대 드래곤", "rarity": "legendary", "unlock_level": 10},
 ]
 
 
@@ -55,7 +81,7 @@ def seed_database():
             item = ShopItem(**item_data)
             db.add(item)
         db.commit()
-        print(f"[SEED] {len(SHOP_ITEMS)}개 상점 아이템 생성 완료")
+        print(f"[SEED] {len(SHOP_ITEMS)}개 캐릭터 아이템 생성 완료")
 
     db.close()
 

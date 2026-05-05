@@ -1,17 +1,20 @@
-"""Plan-Quest - AI 채팅 라우터 (SSE 스트리밍)"""
+"""Plan-Quest - AI 채팅 라우터 (ReAct Agent + SSE 스트리밍)"""
 import asyncio
 import json
 import httpx
+from io import StringIO
+import sys
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from agent_core import get_agent
 
 router = APIRouter(prefix="/api", tags=["채팅"])
 
 # ─── Ollama 설정 ───
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-OLLAMA_MODEL = "llama3.2:latest"  # 사용할 모델 (필요시 변경)
+OLLAMA_MODEL = "qwen2.5:latest"  # Qwen2.5로 변경 (향상된 추론)
 
 SYSTEM_PROMPT = (
     "너는 Plan-Quest의 AI 비서야. "
@@ -65,7 +68,12 @@ async def setup_ollama():
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """SSE 스트리밍 채팅 엔드포인트 - 토큰 단위 출력"""
+    """
+    ReAct 에이전트 스트리밍 채팅 엔드포인트
+
+    사용자 쿼리를 에이전트가 처리하고 스트리밍으로 응답합니다.
+    에이전트는 필요한 도구를 자동으로 선택해서 실행합니다.
+    """
 
     async def event_generator():
         # Ollama가 실행 중이 아니면 폴백 응답
@@ -82,39 +90,25 @@ async def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps({'done': True})}\n\n"
             return
 
-        # Ollama API로 스트리밍 요청
         try:
-            payload = {
-                "model": OLLAMA_MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": req.message},
-                ],
-                "stream": True,
-            }
+            # ReAct 에이전트 실행
+            agent = get_agent()
+            if not agent:
+                error_msg = "❌ AI 에이전트를 초기화할 수 없습니다."
+                yield f"data: {json.dumps({'token': error_msg}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
 
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{OLLAMA_BASE_URL}/api/chat",
-                    json=payload,
-                ) as response:
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        try:
-                            data = json.loads(line)
-                            token = data.get("message", {}).get("content", "")
-                            done = data.get("done", False)
+            # 에이전트 실행
+            response = await agent.run(req.message)
 
-                            if token:
-                                yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+            # 응답을 문자 단위로 스트리밍
+            if response:
+                for char in response:
+                    yield f"data: {json.dumps({'token': char}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0.01)
 
-                            if done:
-                                yield f"data: {json.dumps({'done': True})}\n\n"
-                                return
-                        except json.JSONDecodeError:
-                            continue
+            yield f"data: {json.dumps({'done': True})}\n\n"
 
         except httpx.ConnectError:
             error_msg = "❌ Ollama 서버에 연결할 수 없습니다."
@@ -134,3 +128,24 @@ async def chat_stream(req: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/chat/tools")
+async def get_available_tools():
+    """사용 가능한 에이전트 도구 목록 조회"""
+    agent = get_agent()
+    if not agent:
+        return {"error": "에이전트가 초기화되지 않았습니다."}
+
+    tools_info = []
+    for tool in agent.tools:
+        tools_info.append({
+            "name": tool.name,
+            "description": tool.description
+        })
+
+    return {
+        "available_tools": tools_info,
+        "total_tools": len(tools_info),
+        "model": OLLAMA_MODEL
+    }

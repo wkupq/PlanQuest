@@ -55,6 +55,7 @@ class ShopItemResponse(BaseModel):
     category: str
     price: int
     emoji: str
+    image_url: str = ""
     description: str
     rarity: str
     unlock_level: int
@@ -79,4 +80,5 @@ class PlacedItemResponse(BaseModel):
     grid_y: int
     item_name: str
     item_emoji: str
+    item_image_url: str = ""
     item_category: str
