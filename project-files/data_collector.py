@@ -89,7 +89,7 @@ class ShareGPTSample:
 # ---------------------------------------------------------------------------
 # 품질 평가기
 # ---------------------------------------------------------------------------
-class QualityEvaluator:
+class QualityEvaluator:  # 하위 호환 별칭: QualityFilter = QualityEvaluator (파일 하단 참조)
     """
     규칙 기반 품질 점수 계산기.
     점수 0.0~1.0, MIN_QUALITY_SCORE 미만은 수집에서 제외.
@@ -566,3 +566,6 @@ if __name__ == "__main__":
         print(f"ShareGPT 샘플 수: {len(sg_data)}")
 
         print("\n✅ 모든 테스트 통과")
+
+# 하위 호환 별칭
+QualityFilter = QualityEvaluator

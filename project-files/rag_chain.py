@@ -109,6 +109,81 @@ class RAGChain:
         fut = self.ask_async(question, priority=priority, extra_context=extra_context)
         return fut.result(timeout=timeout)
 
+    async def ask_stream(
+        self,
+        question: str,
+        extra_context: str | None = None,
+    ):
+        """
+        비동기 제너레이터 — 토큰 단위로 스트리밍 반환.
+        Ollama /api/generate 의 stream=True 모드를 직접 사용.
+
+        사용 예:
+            async for token in chain.ask_stream("질문"):
+                print(token, end="", flush=True)
+        """
+        import asyncio
+        import json
+        import requests as _req
+
+        prompt = self._build_prompt(question, extra_context)
+        mgr = self._get_manager()
+
+        payload = {
+            "model":      mgr.model,
+            "prompt":     prompt,
+            "stream":     True,
+            "keep_alive": mgr.keep_alive,
+            "options": {
+                "temperature": self.temperature,
+                "num_predict": self.max_tokens,
+            },
+        }
+        if self.system_prompt:
+            payload["system"] = self.system_prompt
+
+        # 동기 HTTP 스트리밍을 별도 스레드에서 실행해 이벤트 루프를 막지 않음
+        loop = asyncio.get_event_loop()
+        token_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def _stream_worker():
+            try:
+                with _req.post(
+                    f"{mgr.base_url}/api/generate",
+                    json=payload,
+                    stream=True,
+                    timeout=120,
+                ) as resp:
+                    resp.raise_for_status()
+                    for raw_line in resp.iter_lines():
+                        if not raw_line:
+                            continue
+                        try:
+                            data = json.loads(raw_line)
+                        except json.JSONDecodeError:
+                            continue
+                        token = data.get("response", "")
+                        if token:
+                            loop.call_soon_threadsafe(token_queue.put_nowait, token)
+                        if data.get("done", False):
+                            break
+            except Exception as exc:
+                logger.error("ask_stream 오류: %s", exc)
+            finally:
+                loop.call_soon_threadsafe(token_queue.put_nowait, None)  # 종료 신호
+
+        # 별도 스레드에서 HTTP 스트리밍 실행
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(executor, _stream_worker)
+
+        # 토큰 하나씩 yield
+        while True:
+            token = await token_queue.get()
+            if token is None:
+                break
+            yield token
+
     def ask_async(
         self,
         question: str,
