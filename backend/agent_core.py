@@ -30,6 +30,9 @@ from tools.game_state_tools import (
     get_growing_trees,
     get_shop_recommendations,
     get_garden_summary,
+    get_completion_history,
+    get_today_progress,
+    analyze_weak_pattern,
 )
 
 
@@ -153,6 +156,27 @@ class PlanQuestAgent:
                 func=get_garden_summary,
                 description="정원의 전체 현황 (레벨, 하트, 일정, 나무, 캐릭터)을 한 번에 요약합니다. "
                            "\"내 진행 상황 어때?\", \"전체 요약 보여줘\" 같은 질문에 사용합니다."
+            ),
+
+            # ─── 완료 기록 분석 도구 (HabitCompletion 기반) ───
+            Tool(
+                name="get_completion_history",
+                func=get_completion_history,
+                description="최근 완료한 일정 기록을 조회합니다. "
+                           "인자: 'today' / 'week' / 'month'. "
+                           "\"이번 주 몇 번 했어?\", \"오늘 뭐 했어?\" 같은 질문에 사용."
+            ),
+            Tool(
+                name="get_today_progress",
+                func=get_today_progress,
+                description="오늘 예정된 일정 중 몇 개 완료했는지 진행도를 보여줍니다. "
+                           "\"오늘 몇 개 했어?\", \"남은 일정 뭐야?\" 같은 질문에 사용."
+            ),
+            Tool(
+                name="analyze_weak_pattern",
+                func=analyze_weak_pattern,
+                description="완료 기록을 분석해서 강한/약한 요일과 시간대를 알려줍니다. "
+                           "\"내가 언제 잘 해?\", \"패턴 분석해줘\" 같은 질문에 사용."
             ),
         ]
         return tools
@@ -280,6 +304,27 @@ def reset_agent():
     """에이전트 인스턴스 리셋"""
     global _agent_instance
     _agent_instance = None
+ools:
+            result += f"• {tool.name}: {tool.description}\n\n"
+        return result
+
+
+# 전역 에이전트 인스턴스
+_agent_instance: Optional[PlanQuestAgent] = None
+
+
+def get_agent() -> Optional[PlanQuestAgent]:
+    """전역 에이전트 인스턴스 가져오기"""
+    global _agent_instance
+    if _agent_instance is None:
+        _agent_instance = PlanQuestAgent()
+    return _agent_instance
+
+
+def reset_agent():
+    """에이전트 인스턴스 리셋"""
+    global _agent_instance
+    _agent_instance = None
 
 
 if __name__ == "__main__":
@@ -304,3 +349,24 @@ if __name__ == "__main__":
                 print("-" * 60)
 
     asyncio.run(test_agent())
+ools:
+            result += f"• {tool.name}: {tool.description}\n\n"
+        return result
+
+
+# 전역 에이전트 인스턴스
+_agent_instance: Optional[PlanQuestAgent] = None
+
+
+def get_agent() -> Optional[PlanQuestAgent]:
+    """전역 에이전트 인스턴스 가져오기"""
+    global _agent_instance
+    if _agent_instance is None:
+        _agent_instance = PlanQuestAgent()
+    return _agent_instance
+
+
+def reset_agent():
+    """에이전트 인스턴스 리셋"""
+    global _agent_instance
+    _agent_instance = None

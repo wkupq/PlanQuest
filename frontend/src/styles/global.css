@@ -85,58 +85,77 @@ body {
   transform: scale(1.05);
 }
 
-/* ============ 2.5D 아이소메트릭 그리드 (수정됨) ============ */
-/* ============ 2.5D 아이소메트릭 그리드 (수정됨) ============ */
+/* ============ 2.5D 아이소메트릭 풀밭 (Forest 앱 스타일) ============
+   - 타일 경계선 제거 → 매끈한 풀밭처럼 보임
+   - 흙 두께는 그리드 "전체"에만 (각 타일 X)
+   - 트리/캐릭터가 타일 경계 넘어가도 자연스러움
+   - 5x4 = 20 칸 (게임 로직용) 이지만 시각상 한 덩어리
+*/
 .iso-container {
   flex: 1;
   width: 100%;
-  position: relative; /* 맵을 이 구역 안에 가두는 역할 */
-  overflow: hidden; /* 혹시 모를 삐져나옴 방지 */
+  position: relative;
+  overflow: hidden;
+  /* 부드러운 숲 분위기 배경 */
+  background: radial-gradient(ellipse at center, #d4b896 0%, #b89570 100%);
 }
 
 .iso-grid {
   display: grid;
-  grid-template-columns: repeat(8, 100px);
-  grid-template-rows: repeat(8, 100px);
-  gap: 3px;
+  grid-template-columns: repeat(7, 160px);
+  grid-template-rows: repeat(5, 160px);
+  gap: 0;  /* 타일 간격 제거 - 매끈하게 이어짐 */
   transform-style: preserve-3d;
 
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) rotateX(60deg) rotateZ(-45deg);
-}
 
-.iso-tile {
-  width: 100%;
-  height: 100%;
-  background-color: #9DD49D;
-  border: 1px solid #7EC87E;
-  border-radius: 4px;
-  position: relative;
-  cursor: pointer;
+  /* 풀밭 배경 - 부드러운 그라디언트 */
+  background:
+    radial-gradient(ellipse at 30% 30%, #a4dc8e 0%, #8fc775 60%, #7eb866 100%);
+  border-radius: 12px;
 
+  /* 그리드 "전체" 가장자리에만 흙 두께 */
   box-shadow:
     -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
     -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
     -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
     -10px 10px 0 #8A6B4E, -11px 11px 0 #8A6B4E, -12px 12px 0 #8A6B4E,
     -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #6C523A;
-
-  transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
 }
 
-.iso-tile:hover {
-  transform: translate(5px, -5px);
-  background-color: #B5D59A;
-  box-shadow:
-    -1px 1px 0 #8A6B4E, -2px 2px 0 #8A6B4E, -3px 3px 0 #8A6B4E,
-    -4px 4px 0 #8A6B4E, -5px 5px 0 #8A6B4E, -6px 6px 0 #8A6B4E,
-    -7px 7px 0 #8A6B4E, -8px 8px 0 #8A6B4E, -9px 9px 0 #8A6B4E,
-    -10px 10px 0 #8A6B4E, -11px 11px 0 #8A6B4E, -12px 12px 0 #8A6B4E,
-    -13px 13px 0 #8A6B4E, -14px 14px 0 #8A6B4E, -15px 15px 0 #8A6B4E,
-    -16px 16px 0 #8A6B4E, -17px 17px 0 #8A6B4E, -18px 18px 0 #8A6B4E,
-    -19px 19px 0 #8A6B4E, -20px 20px 0 #6C523A;
+.iso-tile {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  position: relative;
+  cursor: pointer;
+  pointer-events: none;  /* 클릭은 컨테이너에서 역산 처리 */
+  transition: background 0.18s;
+}
+
+/* JS 가 마우스 위치 → 그리드 좌표 역산해서 토글하는 호버 클래스 */
+.iso-tile.tile-hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+/* 배치 모드 — 모든 타일에 점선 표시 */
+.iso-tile.tile-placeable {
+  background: rgba(255, 255, 200, 0.12);
+  outline: 1px dashed rgba(255, 255, 255, 0.35);
+  outline-offset: -3px;
+}
+
+.iso-tile.tile-placeable.tile-hover {
+  background: rgba(255, 255, 200, 0.45);
+  outline: 1.5px dashed rgba(255, 255, 255, 0.7);
+}
+
+.iso-container {
+  cursor: pointer;
 }
 
 .iso-item {
@@ -148,13 +167,13 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  /* 🌟 타일이 커졌으니 이모지 크기도 대폭 확대 */
-  font-size: 52px; 
-  pointer-events: none; 
-  
-  /* 🌟 타일이 두꺼워졌으므로 이모지가 흙에 파묻히지 않도록 더 위로(-28px) 끌어올림 */
-  transform: rotateZ(45deg) rotateX(-60deg) translateY(-28px);
-  filter: drop-shadow(0 6px 6px rgba(0,0,0,0.3)); 
+  font-size: 72px;  /* 이모지 (씨앗/나무) 더 크게 */
+  pointer-events: none;
+
+  /* 그리드 회전을 정확히 역으로 보정 → 캐릭터가 화면에 똑바로 서 있음.
+     translateY 줄여서 "타일에 더 가까이" 서 있게. */
+  transform: rotateZ(45deg) rotateX(-60deg) translateY(-22px);
+  filter: drop-shadow(0 6px 6px rgba(0,0,0,0.3));
 }
 
 /* 배치 가능 타일 강조 */
@@ -162,7 +181,162 @@ body {
   cursor: crosshair;
 }
 
-/* ─── 캐릭터 이미지 (타일 위에 3D로 서있기) ─── */
+/* ============ 빌보드 레이어 (캐릭터/나무 - 화면 좌표계) ============
+   회전된 .iso-grid 와 별도로 화면 위에 떠 있음.
+   절대 안 기울어짐 → 진짜 2.5D 게임 느낌.
+*/
+.iso-billboards {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;  /* 자식만 클릭 받음 */
+}
+
+.billboard {
+  position: absolute;
+  /* (left, top) 이 캐릭터의 "발 위치" 가 됨.
+     translate(-50%, -100%) 로 자식의 bottom-center 가 이 점에 옴. */
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  /* 살짝 hover 반응 */
+  transition: transform 0.15s ease-out, filter 0.15s ease-out;
+}
+
+.billboard:hover {
+  transform: translate(-50%, -100%) scale(1.05);
+  filter: brightness(1.05);
+  z-index: 999 !important;
+}
+
+/* 이동 중인 캐릭터 — 반투명 + 흔들림 */
+.billboard.billboard-moving {
+  filter: brightness(0.7) drop-shadow(0 0 8px rgba(245, 185, 66, 0.7));
+  animation: billboard-moving-shake 0.6s ease-in-out infinite;
+}
+
+@keyframes billboard-moving-shake {
+  0%, 100% { transform: translate(-50%, -100%) rotate(0deg); }
+  25%      { transform: translate(-50%, -100%) rotate(-2deg); }
+  75%      { transform: translate(-50%, -100%) rotate(2deg); }
+}
+
+.billboard-char {
+  width: 150px;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  object-position: center bottom;
+  display: block;
+  position: relative;
+  z-index: 2;
+  filter:
+    drop-shadow(0 4px 3px rgba(0, 0, 0, 0.20))
+    drop-shadow(0 10px 8px rgba(0, 0, 0, 0.25));
+}
+
+/* 픽셀 아트 — 보간 X */
+.billboard-char.pixel-art {
+  width: 180px;
+  max-height: 220px;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+/* 빌보드 그림자 — 발 밑에 타원 (캐릭터 뒤쪽) */
+.billboard-shadow {
+  position: absolute;
+  bottom: -8px;          /* 캐릭터 발 살짝 아래 */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 26px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.28) 40%,
+    rgba(0, 0, 0, 0) 75%
+  );
+  border-radius: 50%;
+  filter: blur(1px);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* 픽셀 아트 캐릭터일 때 그림자 살짝 더 큼 */
+.billboard:has(.pixel-art) .billboard-shadow {
+  width: 120px;
+  height: 30px;
+}
+
+/* 빌보드 안의 트리 아이콘 — 회전 보정 X (그냥 화면 그대로) */
+.billboard .tree-icon {
+  width: 130px;
+  height: 182px;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 4px 3px rgba(0, 0, 0, 0.20))
+    drop-shadow(0 10px 8px rgba(0, 0, 0, 0.25));
+}
+
+.billboard .tree-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.billboard .item-heart {
+  position: absolute;
+  top: -34px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 24px;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
+  z-index: 5;
+  animation: heart-bob 1.2s ease-in-out infinite;
+}
+
+/* 나무 위 시간 배지 — 좌상단에 작게 (분 단위) */
+.time-badge {
+  position: absolute;
+  top: -8px;
+  left: -10px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #5D3A1A;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+  z-index: 6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  /* 살짝 부유 */
+  animation: badge-float 3s ease-in-out infinite;
+}
+
+.time-badge-urgent {
+  background: linear-gradient(135deg, #ffe4a0, #ffb84d);
+  color: #8B4513;
+  box-shadow: 0 2px 6px rgba(255, 152, 0, 0.35);
+  animation: badge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes badge-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 2px 6px rgba(255, 152, 0, 0.35); }
+  50%      { transform: scale(1.06); box-shadow: 0 3px 10px rgba(255, 152, 0, 0.55); }
+}
+
+/* (legacy) 캐릭터 이미지 (타일 위에 3D로 서있기) — 빌보드 레이어로 옮김 */
 .character-on-tile {
   position: relative;
   display: flex;
@@ -171,32 +345,90 @@ body {
 }
 
 .char-img-on-tile {
-  /* 캐릭터를 더 크게 + 세로 비율 살림 */
-  width: 110px;
-  height: 130px;
+  /* 큰 타일 (160px) 에 맞춰 캐릭터도 더 큼 */
+  width: 150px;
+  height: 180px;
   object-fit: contain;
   object-position: center bottom;
   image-rendering: auto;
   pointer-events: none;
   /* 다층 drop-shadow 로 입체감 강화 - 스티커 느낌 제거 */
   filter:
-    drop-shadow(0 3px 2px rgba(0, 0, 0, 0.18))
-    drop-shadow(0 7px 6px rgba(0, 0, 0, 0.22));
+    drop-shadow(0 4px 3px rgba(0, 0, 0, 0.20))
+    drop-shadow(0 10px 8px rgba(0, 0, 0, 0.25));
+}
+
+/* 픽셀 아트 캐릭터 (image_url 에 _pixel 접미사가 있는 경우) — 픽셀 보존 */
+.char-img-on-tile.pixel-art {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  /* 픽셀 아트는 작게 그려져서 키워야 보임 → 더 큰 width */
+  width: 170px;
+  height: 200px;
 }
 
 /* 캐릭터 발 밑 그림자 - 더 진하고 좁게 (지면 접촉감) */
 .char-shadow {
-  width: 64px;
-  height: 18px;
+  width: 90px;
+  height: 24px;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 0, 0, 0.55) 0%,
-    rgba(0, 0, 0, 0.30) 40%,
+    rgba(0, 0, 0, 0.6) 0%,
+    rgba(0, 0, 0, 0.32) 40%,
     rgba(0, 0, 0, 0) 75%
   );
   border-radius: 50%;
   margin-top: -14px;
   filter: blur(0.8px);
+}
+
+/* ─── 나무/씨앗 SVG (TreeIcon) ─── */
+.tree-on-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tree-icon {
+  width: 110px;
+  height: 154px;  /* 비율 100:140 유지 */
+  pointer-events: none;
+  filter:
+    drop-shadow(0 3px 2px rgba(0, 0, 0, 0.18))
+    drop-shadow(0 7px 6px rgba(0, 0, 0, 0.22));
+}
+
+.tree-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 수확 가능 상태 — 살짝 흔들리며 빛남 */
+.tree-icon.tree-pulse {
+  animation: tree-pulse-anim 1.6s ease-in-out infinite;
+}
+@keyframes tree-pulse-anim {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 3px 2px rgba(0,0,0,0.18)) drop-shadow(0 7px 6px rgba(0,0,0,0.22)); }
+  50%      { transform: scale(1.05); filter: drop-shadow(0 4px 3px rgba(232,90,90,0.35)) drop-shadow(0 8px 8px rgba(232,90,90,0.25)); }
+}
+
+/* 나무 위 하트 (수확 가능 신호) */
+.item-heart {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
+  z-index: 5;
+  animation: heart-bob 1.2s ease-in-out infinite;
+}
+@keyframes heart-bob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(-4px); }
 }
 
 /* ─── 상점 카드 이미지 ─── */

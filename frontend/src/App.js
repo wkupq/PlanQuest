@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getUser, getTrees, getPlacedItems, getHabits, harvestTree } from './api';
+import { getUser, getTrees, getPlacedItems, getHabits } from './api';
 import IsometricMap from './components/IsometricMap';
 import HabitPanel from './components/HabitPanel';
 import ShopPanel from './components/ShopPanel';
@@ -9,6 +9,8 @@ import ChatDashboard from './components/ChatDashboard';
 import CalendarPanel from './components/CalendarPanel';
 import RoutinePanel from './components/RoutinePanel';
 import OllamaPopup from './components/OllamaPopup';
+import TreeInfoModal from './components/TreeInfoModal';
+import CharacterInfoModal from './components/CharacterInfoModal';
 import Toast from './components/Toast';
 
 export default function App() {
@@ -26,6 +28,13 @@ export default function App() {
   const [placementMode, setPlacementMode] = useState(null);
   const [ollamaStatus, setOllamaStatus] = useState(null);
   const [showOllamaPopup, setShowOllamaPopup] = useState(false);
+
+  // 씨앗 클릭 시 정보 모달
+  const [selectedTree, setSelectedTree] = useState(null);
+  // 배치된 캐릭터 클릭 시 정보 모달
+  const [selectedChar, setSelectedChar] = useState(null);
+  // 이동 모드 — { type: 'tree' | 'character', id, name, ... }
+  const [moveMode, setMoveMode] = useState(null);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -70,16 +79,15 @@ export default function App() {
 
   useEffect(() => { checkOllama(); }, [checkOllama]);
 
-  const handleTreeClick = async (tree) => {
-    if (tree.hearts_available <= 0) return;
-    try {
-      const res = await harvestTree(tree.id);
-      showHeartAnim(window.innerWidth / 2, window.innerHeight / 2 - 50, res.data.harvested);
-      showToast(res.data.message);
-      refresh();
-    } catch (err) {
-      showToast(err.response?.data?.detail || '수확 실패');
-    }
+  const handleTreeClick = (tree) => {
+    // 클릭 시 항상 정보 모달 표시 (수확은 모달 안에서)
+    setSelectedTree(tree);
+  };
+
+  const handleTreeHarvested = (data) => {
+    // TreeInfoModal 에서 수확 성공 시 호출됨
+    showHeartAnim(window.innerWidth / 2, window.innerHeight / 2 - 50, data.harvested);
+    refresh();
   };
 
   return (
@@ -109,8 +117,11 @@ export default function App() {
         trees={trees}
         placedItems={placedItems}
         onTreeClick={handleTreeClick}
+        onCharClick={(item) => { if (!moveMode) setSelectedChar(item); }}
         placementMode={placementMode}
         onSetPlacementMode={setPlacementMode}
+        moveMode={moveMode}
+        onSetMoveMode={setMoveMode}
         onRefresh={refresh}
         showToast={showToast}
       />
@@ -214,6 +225,41 @@ export default function App() {
           status={ollamaStatus}
           onClose={() => setShowOllamaPopup(false)}
           onRetry={() => { checkOllama(); }}
+        />
+      )}
+
+      {/* 씨앗/나무 클릭 정보 모달 */}
+      {selectedTree && (
+        <TreeInfoModal
+          tree={selectedTree}
+          onClose={() => setSelectedTree(null)}
+          onHarvested={handleTreeHarvested}
+          onDeleted={() => { setSelectedTree(null); refresh(); }}
+          onMove={(tree) => {
+            setMoveMode({ type: 'tree', id: tree.id, name: tree.habit_title });
+            setSelectedTree(null);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 캐릭터 클릭 정보 모달 */}
+      {selectedChar && (
+        <CharacterInfoModal
+          placedItem={selectedChar}
+          onClose={() => setSelectedChar(null)}
+          onMove={(item) => {
+            setMoveMode({
+              type: 'character',
+              id: item.id,
+              ownedItemId: item.owned_item_id,
+              name: item.item_name,
+              shopItemId: null,  // 이동은 owned_item_id 기준
+            });
+            setSelectedChar(null);
+          }}
+          onRemoved={refresh}
+          showToast={showToast}
         />
       )}
 

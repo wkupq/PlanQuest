@@ -13,7 +13,8 @@
 모든 함수는 사람이 읽기 좋은 한국어 문자열 반환 (LLM 이 그대로 응답에 활용).
 """
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import Counter
 
 from database import SessionLocal
 from models import (
@@ -23,6 +24,7 @@ from models import (
     OwnedItem,
     PlacedItem,
     TreeOnMap,
+    HabitCompletion,
 )
 
 
@@ -159,6 +161,146 @@ def get_shop_recommendations(_: str = "") -> str:
         lines = [f"🛍️ {user.hearts}하트로 살 수 있는 캐릭터 추천:"]
         for it in picks:
             lines.append(f"- {it.emoji} {it.name} ({it.price}H, {it.rarity})")
+        return "\n".join(lines)
+    finally:
+        db.close()
+
+
+# ─── 6.5 완료 기록 (HabitCompletion) ─────────────────
+DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def get_completion_history(period: str = "week") -> str:
+    """최근 일정 완료 기록.
+
+    period: "today" | "week" | "month"
+    """
+    db = SessionLocal()
+    try:
+        now = datetime.now()
+        if period == "today":
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "month":
+            start = now - timedelta(days=30)
+        else:  # week
+            start = now - timedelta(days=7)
+
+        rows = (
+            db.query(HabitCompletion)
+            .filter(HabitCompletion.completed_at >= start)
+            .all()
+        )
+        if not rows:
+            return f"📊 최근 {period}: 완료한 일정이 없어요."
+
+        # 일정 제목별 집계
+        by_habit = Counter()
+        for r in rows:
+            h = db.query(Habit).filter(Habit.id == r.habit_id).first()
+            title = h.title if h else "(삭제됨)"
+            by_habit[title] += 1
+
+        total_hearts = sum(r.hearts_earned or 0 for r in rows)
+        period_label = {"today": "오늘", "week": "지난 7일", "month": "지난 30일"}[period]
+
+        lines = [f"📊 {period_label} 완료 기록:"]
+        lines.append(f"- 총 완료: {len(rows)}건")
+        lines.append(f"- 받은 하트: {total_hearts}개")
+        lines.append(f"- 일정별:")
+        for title, cnt in by_habit.most_common(5):
+            lines.append(f"   • {title}: {cnt}회")
+        return "\n".join(lines)
+    finally:
+        db.close()
+
+
+def get_today_progress(_: str = "") -> str:
+    """오늘 완료한 일정 vs 예정된 일정 진행도."""
+    db = SessionLocal()
+    try:
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = today + timedelta(days=1)
+
+        # 오늘 예정 (현재 habit + 요일 매칭)
+        krDow = datetime.now().weekday()
+        habits = db.query(Habit).all()
+        scheduled = [h for h in habits
+                     if not (h.repeat_days or []) or krDow in (h.repeat_days or [])]
+
+        # 오늘 완료
+        completions = (
+            db.query(HabitCompletion)
+            .filter(HabitCompletion.completed_at >= today)
+            .filter(HabitCompletion.completed_at < tomorrow)
+            .all()
+        )
+        completed_ids = {c.habit_id for c in completions}
+
+        if not scheduled:
+            return "📅 오늘 예정된 일정이 없어요."
+
+        done = [h for h in scheduled if h.id in completed_ids]
+        pending = [h for h in scheduled if h.id not in completed_ids]
+        pct = int(len(done) / len(scheduled) * 100)
+
+        lines = [f"📅 오늘 진행도: {len(done)}/{len(scheduled)} ({pct}%)"]
+        if done:
+            lines.append("✅ 완료:")
+            for h in done:
+                lines.append(f"   - {h.title}")
+        if pending:
+            lines.append("⏳ 남은 일정:")
+            for h in pending:
+                t = ", ".join(h.times or [])
+                lines.append(f"   - {h.title}{f' ({t})' if t else ''}")
+        return "\n".join(lines)
+    finally:
+        db.close()
+
+
+def analyze_weak_pattern(_: str = "") -> str:
+    """완료 기록에서 약한 요일/시간대 분석."""
+    db = SessionLocal()
+    try:
+        # 지난 30일 기록
+        start = datetime.now() - timedelta(days=30)
+        rows = (
+            db.query(HabitCompletion)
+            .filter(HabitCompletion.completed_at >= start)
+            .all()
+        )
+        if len(rows) < 5:
+            return "📊 분석할 기록이 부족해요. 일정을 더 완료하면 패턴이 보일 거예요."
+
+        # 요일별 완료 수 (0=월 ... 6=일)
+        by_dow = Counter()
+        # 시간대별 완료 수
+        by_hour_bucket = Counter()  # "아침"/"낮"/"저녁"/"밤"
+
+        for r in rows:
+            dt = r.completed_at
+            by_dow[dt.weekday()] += 1
+            h = dt.hour
+            if 5 <= h < 11: by_hour_bucket["아침"] += 1
+            elif 11 <= h < 17: by_hour_bucket["낮"] += 1
+            elif 17 <= h < 22: by_hour_bucket["저녁"] += 1
+            else: by_hour_bucket["밤"] += 1
+
+        lines = ["📊 최근 30일 패턴 분석:"]
+
+        # 강한/약한 요일
+        if by_dow:
+            best_dow = max(by_dow, key=by_dow.get)
+            worst_dow = min(by_dow, key=by_dow.get)
+            lines.append(f"- 가장 잘하는 요일: {DAY_NAMES[best_dow]} ({by_dow[best_dow]}회)")
+            if by_dow[worst_dow] < by_dow[best_dow]:
+                lines.append(f"- 약한 요일: {DAY_NAMES[worst_dow]} ({by_dow[worst_dow]}회)")
+
+        # 강한/약한 시간대
+        if by_hour_bucket:
+            best_h = max(by_hour_bucket, key=by_hour_bucket.get)
+            lines.append(f"- 주로 활동 시간대: {best_h} ({by_hour_bucket[best_h]}회)")
+
         return "\n".join(lines)
     finally:
         db.close()

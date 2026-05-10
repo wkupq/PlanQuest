@@ -46,6 +46,14 @@ class TreeResponse(BaseModel):
     growth_stage: int
     hearts_available: int
 
+    # 씨앗 클릭 시 정보 팝업에 사용
+    repeat_days: List[int] = []   # [0,1,2,3,4] = 월~금
+    times: List[str] = []         # ["09:00", "18:00"]
+    alarm_enabled: bool = True
+    hearts_reward: int = 1
+    streak: int = 0
+    completed_today: bool = False
+
 
 # ============ 상점 ============
 

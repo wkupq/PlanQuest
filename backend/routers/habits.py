@@ -5,7 +5,7 @@ from typing import List
 from datetime import datetime
 
 from database import get_db
-from models import UserProfile, Habit, TreeOnMap
+from models import UserProfile, Habit, TreeOnMap, HabitCompletion
 from schemas import HabitCreate, HabitResponse
 
 router = APIRouter(prefix="/api", tags=["습관"])
@@ -30,11 +30,29 @@ def create_habit(habit: HabitCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_habit)
 
-    # 나무도 맵에 자동 생성
+    # 나무도 맵에 자동 생성 (7x5 = 35 그리드, 캐릭터 있는 칸은 피함)
+    GRID_COLS, GRID_ROWS = 7, 5
+    from models import PlacedItem
+    used = set()
+    for t in db.query(TreeOnMap).all():
+        used.add((t.grid_x, t.grid_y))
+    for p in db.query(PlacedItem).all():
+        used.add((p.grid_x, p.grid_y))
+
+    placed_x, placed_y = 0, 0
+    for y in range(GRID_ROWS):
+        for x in range(GRID_COLS):
+            if (x, y) not in used:
+                placed_x, placed_y = x, y
+                break
+        else:
+            continue
+        break
+
     tree = TreeOnMap(
         habit_id=new_habit.id,
-        grid_x=len(db.query(TreeOnMap).all()) % 6,
-        grid_y=len(db.query(TreeOnMap).all()) // 6,
+        grid_x=placed_x,
+        grid_y=placed_y,
         growth_stage=0,
         hearts_available=0,
     )
@@ -70,6 +88,13 @@ def complete_habit(habit_id: int, db: Session = Depends(get_db)):
         if tree.growth_stage < 3:
             tree.growth_stage += 1
         tree.hearts_available += 1
+
+    # 캘린더 히트맵용 — 완료 기록 저장
+    db.add(HabitCompletion(
+        habit_id=habit_id,
+        user_id=1,
+        hearts_earned=earned,
+    ))
 
     db.commit()
     return {

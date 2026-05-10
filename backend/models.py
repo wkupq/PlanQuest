@@ -96,6 +96,21 @@ class TreeOnMap(Base):
     habit = relationship("Habit")
 
 
+class HabitCompletion(Base):
+    """일정 완료 기록 — 날짜별 히트맵/통계용.
+
+    이전에는 streak/last_completed 만 갱신했지만, 캘린더 히트맵을 위해
+    매 완료 시 행 추가. 어떤 일정을 언제 완료했는지 보존.
+    """
+    __tablename__ = "habit_completion"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("user_profile.id"), default=1)
+    completed_at = Column(DateTime, default=datetime.utcnow)
+    hearts_earned = Column(Integer, default=1)
+
+
 class UserMemory(Base):
     """사용자 맥락 기억 (RAG 메모리 - ChromaDB 와 함께 사용).
 

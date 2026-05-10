@@ -6,61 +6,29 @@ from models import ShopItem, UserProfile
 # image_url: frontend/public/images/characters/ 폴더 안의 PNG 파일명
 # 이미지를 추가하면 자동으로 상점에 표시됩니다
 SHOP_ITEMS = [
-    # === 캐릭터 (Character) ===
-    # image_url에 실제 이미지 파일명을 넣으세요 (예: "blue_dragon.png")
-    # 이미지가 없으면 emoji가 대체로 표시됩니다
+    # === starter 캐릭터 (Common, Lv.1) ===
+    # 픽셀 아트 캐릭터: image_url 에 'pixel' 들어가면 프론트가 픽셀 보존 렌더링.
+    # 추후 캐릭터 추가 시 PNG 를 frontend/public/images/characters/ 에 두고 이 리스트에 추가.
 
-    # --- Common (Lv.1) ---
-    {"name": "불꽃공룡", "category": "character", "price": 3, "emoji": "🦖",
-     "image_url": "flame_dino.png",
-     "description": "머리에 불꽃 왕관을 쓴 아기 공룡", "rarity": "common", "unlock_level": 1},
+    {"name": "불꽃포메", "category": "character", "price": 3, "emoji": "🔥",
+     "image_url": "flame_pom.png",
+     "description": "머리에 불꽃을 단 통통한 포메라니안",
+     "rarity": "common", "unlock_level": 1},
 
-    {"name": "물방울룡", "category": "character", "price": 3, "emoji": "🐉",
-     "image_url": "water_dragon.png",
-     "description": "물속성 아기 드래곤", "rarity": "common", "unlock_level": 1},
+    {"name": "달빛토끼", "category": "character", "price": 4, "emoji": "🌙",
+     "image_url": "moon_bunny.png",
+     "description": "이마에 황금 초승달이 빛나는 토끼",
+     "rarity": "common", "unlock_level": 1},
 
-    {"name": "숲토끼", "category": "character", "price": 3, "emoji": "🐰",
-     "image_url": "forest_rabbit.png",
-     "description": "숲에서 온 귀여운 토끼", "rarity": "common", "unlock_level": 1},
+    {"name": "눈구름냥", "category": "character", "price": 4, "emoji": "❄️",
+     "image_url": "snow_cat.png",
+     "description": "구름 같은 꼬리에 솜털 갈기 가진 흰 고양이",
+     "rarity": "common", "unlock_level": 1},
 
-    {"name": "불꽃여우", "category": "character", "price": 4, "emoji": "🦊",
-     "image_url": "fire_fox.png",
-     "description": "꼬리에 불꽃이 타오르는 여우", "rarity": "common", "unlock_level": 1},
-
-    {"name": "구름양", "category": "character", "price": 3, "emoji": "🐑",
-     "image_url": "cloud_sheep.png",
-     "description": "구름처럼 폭신한 양", "rarity": "common", "unlock_level": 1},
-
-    # --- Rare (Lv.3) ---
-    {"name": "번개호랑이", "category": "character", "price": 8, "emoji": "🐯",
-     "image_url": "thunder_tiger.png",
-     "description": "번개를 두른 호랑이", "rarity": "rare", "unlock_level": 3},
-
-    {"name": "달빛사슴", "category": "character", "price": 8, "emoji": "🦌",
-     "image_url": "moon_deer.png",
-     "description": "뿔에서 달빛이 나는 사슴", "rarity": "rare", "unlock_level": 3},
-
-    {"name": "바람매", "category": "character", "price": 10, "emoji": "🦅",
-     "image_url": "wind_hawk.png",
-     "description": "바람을 가르는 매", "rarity": "rare", "unlock_level": 3},
-
-    # --- Epic (Lv.5) ---
-    {"name": "얼음늑대", "category": "character", "price": 15, "emoji": "🐺",
-     "image_url": "ice_wolf.png",
-     "description": "얼음 갑옷을 입은 늑대", "rarity": "epic", "unlock_level": 5},
-
-    {"name": "크리스탈곰", "category": "character", "price": 18, "emoji": "🐻",
-     "image_url": "crystal_bear.png",
-     "description": "수정으로 빛나는 곰", "rarity": "epic", "unlock_level": 5},
-
-    # --- Legendary (Lv.8) ---
-    {"name": "천상의유니콘", "category": "character", "price": 30, "emoji": "🦄",
-     "image_url": "celestial_unicorn.png",
-     "description": "하늘에서 내려온 유니콘", "rarity": "legendary", "unlock_level": 8},
-
-    {"name": "고대용", "category": "character", "price": 50, "emoji": "🐲",
-     "image_url": "ancient_dragon.png",
-     "description": "전설 속 고대 드래곤", "rarity": "legendary", "unlock_level": 10},
+    {"name": "우주거북", "category": "character", "price": 8, "emoji": "✨",
+     "image_url": "cosmic_turtle.png",
+     "description": "등껍질에 은하가 담긴 신비한 거북",
+     "rarity": "rare", "unlock_level": 3},
 ]
 
 

@@ -45,6 +45,13 @@ REQUIRED_COLUMNS = {
         "level":               "INTEGER DEFAULT 1",
         "total_hearts_earned": "INTEGER DEFAULT 0",
     },
+    # 캘린더 히트맵용 — 일정 완료 기록
+    "habit_completion": {
+        "habit_id":      "INTEGER",
+        "user_id":       "INTEGER DEFAULT 1",
+        "completed_at":  "DATETIME",
+        "hearts_earned": "INTEGER DEFAULT 1",
+    },
     # W3 D4-6: RAG 메모리
     "user_memory": {
         "memory_type":      "TEXT DEFAULT 'conversation'",

@@ -9,6 +9,19 @@ from schemas import PlaceItemRequest, PlacedItemResponse
 
 router = APIRouter(prefix="/api", tags=["배치"])
 
+# 배치도 사이즈 (프론트 IsometricMap.js 와 동일하게 유지)
+GRID_COLS = 7
+GRID_ROWS = 5
+
+
+def _validate_grid(x: int, y: int):
+    """배치 좌표가 그리드 범위 안인지 검증."""
+    if not (0 <= x < GRID_COLS and 0 <= y < GRID_ROWS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"좌표가 그리드 밖입니다 ({GRID_COLS}x{GRID_ROWS}): ({x},{y})"
+        )
+
 
 @router.get("/placed-items", response_model=List[PlacedItemResponse])
 def get_placed_items(db: Session = Depends(get_db)):
@@ -33,6 +46,9 @@ def get_placed_items(db: Session = Depends(get_db)):
 
 @router.post("/placed-items", response_model=PlacedItemResponse)
 def place_item(req: PlaceItemRequest, db: Session = Depends(get_db)):
+    # 좌표 검증 (5x4 그리드)
+    _validate_grid(req.grid_x, req.grid_y)
+
     # req.owned_item_id는 프론트에서 ShopItem.id로 전달됨
     # → OwnedItem.shop_item_id로 조회해야 함
     owned = db.query(OwnedItem).filter(

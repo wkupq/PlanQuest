@@ -20,6 +20,8 @@ from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
+DAY_NAMES_KR = ["월", "화", "수", "목", "금", "토", "일"]
+
 from models import (
     UserProfile,
     Habit,
@@ -28,6 +30,7 @@ from models import (
     PlacedItem,
     TreeOnMap,
     UserMemory,
+    HabitCompletion,
 )
 
 
@@ -115,6 +118,27 @@ def get_proactive_suggestions(db: Session, user_id: int = 1) -> List[Dict]:
             "action_hint": "일정 → 새로 추가",
         })
 
+    # ⑥ 약한 요일 알림 (지난 30일 완료 기록 기반)
+    start = datetime.utcnow() - timedelta(days=30)
+    completions = db.query(HabitCompletion).filter(
+        HabitCompletion.completed_at >= start
+    ).all()
+    if len(completions) >= 10:  # 최소 데이터 있을 때만
+        by_dow = Counter()
+        for c in completions:
+            by_dow[c.completed_at.weekday()] += 1
+        if len(by_dow) >= 2:
+            weak_dow = min(by_dow, key=by_dow.get)
+            today_dow = datetime.now().weekday()
+            if today_dow == weak_dow:
+                suggestions.append({
+                    "type": "weak_day_today",
+                    "priority": 4,
+                    "title": f"💪 {DAY_NAMES_KR[weak_dow]}요일 약점 극복!",
+                    "message": f"지난 30일간 {DAY_NAMES_KR[weak_dow]}요일에 다른 요일보다 적게 완료하셨어요. 오늘 한 개라도 완료하면 패턴이 바뀝니다.",
+                    "action_hint": None,
+                })
+
     # 우선순위 높은 순
     suggestions.sort(key=lambda s: s["priority"], reverse=True)
     return suggestions
@@ -122,15 +146,18 @@ def get_proactive_suggestions(db: Session, user_id: int = 1) -> List[Dict]:
 
 # ─── 2. 일정 달성 패턴 분석 ─────────────────────────────
 def analyze_habit_pattern(db: Session, user_id: int = 1) -> Dict:
-    """사용자의 습관 데이터에서 패턴 추출.
+    """사용자의 습관 데이터 + 실제 완료 기록에서 패턴 추출.
 
     반환:
         {
           "total_habits": int,
           "avg_streak": float,
           "best_habit": str,
-          "weakest_time": str,   # "아침" | "낮" | "저녁" | "밤"
+          "best_dow": "월" | ...        # 잘 달성하는 요일 (실제 완료 기록 기반)
+          "weak_dow": "월" | ...        # 약한 요일
+          "best_time_bucket": "아침"... # 잘 활동하는 시간대
           "completion_rate_today": float,
+          "month_completed_days": int,  # 지난 30일 중 1건이라도 완료한 일수
         }
     """
     habits = db.query(Habit).filter_by(user_id=user_id).all()
@@ -143,36 +170,43 @@ def analyze_habit_pattern(db: Session, user_id: int = 1) -> Dict:
     best = max(habits, key=lambda h: h.streak or 0)
     completed_today = sum(1 for h in habits if h.completed_today)
 
-    # 시간대 분석 — habit.times 의 시간을 모음
-    time_buckets = Counter()
-    for h in habits:
-        for t in (h.times or []):
-            try:
-                hh = int(str(t).split(":")[0])
-                if 5 <= hh < 11:
-                    time_buckets["아침"] += 1
-                elif 11 <= hh < 17:
-                    time_buckets["낮"] += 1
-                elif 17 <= hh < 22:
-                    time_buckets["저녁"] += 1
-                else:
-                    time_buckets["밤"] += 1
-            except (ValueError, IndexError):
-                pass
+    # ── 실제 완료 기록 기반 분석 (지난 30일) ──
+    DAY_NAMES_KR = ["월", "화", "수", "목", "금", "토", "일"]
+    start = datetime.utcnow() - timedelta(days=30)
+    completions = (
+        db.query(HabitCompletion)
+        .filter(HabitCompletion.completed_at >= start)
+        .all()
+    )
 
-    weakest_time = None
-    if time_buckets:
-        # 가장 적은 시간대
-        weakest_time = min(time_buckets, key=time_buckets.get)
+    by_dow = Counter()
+    by_hour = Counter()
+    completed_days = set()
+    for c in completions:
+        by_dow[c.completed_at.weekday()] += 1
+        h = c.completed_at.hour
+        if 5 <= h < 11: by_hour["아침"] += 1
+        elif 11 <= h < 17: by_hour["낮"] += 1
+        elif 17 <= h < 22: by_hour["저녁"] += 1
+        else: by_hour["밤"] += 1
+        completed_days.add(c.completed_at.strftime("%Y-%m-%d"))
+
+    best_dow = DAY_NAMES_KR[max(by_dow, key=by_dow.get)] if by_dow else None
+    weak_dow = DAY_NAMES_KR[min(by_dow, key=by_dow.get)] if len(by_dow) >= 2 else None
+    best_time = max(by_hour, key=by_hour.get) if by_hour else None
 
     return {
         "total_habits": len(habits),
         "avg_streak": round(avg_streak, 1),
         "best_habit": best.title,
         "best_streak": best.streak,
-        "weakest_time": weakest_time,
+        "best_dow": best_dow,
+        "weak_dow": weak_dow,
+        "best_time_bucket": best_time,
         "completed_today": completed_today,
         "completion_rate_today": round(completed_today / len(habits), 2) if habits else 0,
+        "month_completed_days": len(completed_days),
+        "month_total_completions": len(completions),
     }
 
 
@@ -219,5 +253,6 @@ def build_personalization_context(
                     lines.append(ctx)
         except Exception:
             pass
+
 
     return "\n".join(lines)
