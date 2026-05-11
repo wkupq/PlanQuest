@@ -302,6 +302,64 @@ class MemoryEngine:
             return {"enabled": False, "error": str(e)}
 
 
+# ─── 자동 카테고리화 (W5 D3) ─────────────────────────────
+# 키워드 기반 분류. LLM 없이도 즉시 동작.
+CATEGORY_KEYWORDS = {
+    "habit":      ["운동", "공부", "스터디", "독서", "명상", "습관", "루틴", "완료", "달성"],
+    "preference": ["좋아", "싫어", "선호", "취향", "원해", "싫", "보통", "관심"],
+    "schedule":   ["일정", "약속", "회의", "미팅", "예정", "내일", "오늘", "다음", "스케줄"],
+    "game_event": ["캐릭터", "구매", "배치", "수확", "하트", "레벨", "정원", "나무", "씨앗"],
+    "emotion":    ["기쁘", "슬프", "힘들", "지치", "행복", "스트레스", "기분", "걱정", "불안"],
+    "personal":   ["이름", "나이", "직업", "생일", "가족", "친구", "회사", "학교"],
+}
+
+
+def auto_categorize(text: str, default: str = "conversation") -> str:
+    """텍스트에서 가장 매치되는 카테고리 자동 선택.
+
+    각 카테고리별 키워드 매치 수를 세고, 최다 카테고리 반환.
+    매치 0이면 default.
+    """
+    if not text:
+        return default
+    text_lower = text.lower()
+    scores = {}
+    for cat, keywords in CATEGORY_KEYWORDS.items():
+        s = sum(1 for kw in keywords if kw in text_lower)
+        if s > 0:
+            scores[cat] = s
+    if not scores:
+        return default
+    return max(scores, key=scores.get)
+
+
+def auto_importance(text: str, memory_type: str) -> float:
+    """텍스트 + 카테고리 기반 중요도 자동 산정 (0.0 ~ 1.0).
+
+    규칙:
+      - personal/preference: 0.7 (장기 보존)
+      - emotion/game_event:  0.5
+      - schedule:           0.4 (시간 지나면 의미 없음)
+      - habit:              0.5
+      - conversation:       0.3 (기본)
+      + 길이 보정 (50자 이상이면 +0.1)
+      + 강조 단어 ("중요", "꼭", "절대") 있으면 +0.15
+    """
+    base = {
+        "personal": 0.7, "preference": 0.7,
+        "emotion": 0.5, "game_event": 0.5, "habit": 0.5,
+        "schedule": 0.4,
+        "conversation": 0.3,
+    }.get(memory_type, 0.3)
+
+    if text and len(text) >= 50:
+        base += 0.1
+    if text and any(kw in text for kw in ["중요", "꼭", "절대", "잊지", "기억"]):
+        base += 0.15
+
+    return min(1.0, base)
+
+
 # ─── 싱글톤 ─────────────────────────────────────────────
 _engine: Optional[MemoryEngine] = None
 

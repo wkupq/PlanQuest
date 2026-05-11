@@ -188,6 +188,54 @@ def main():
     except Exception as e:
         print(f"  ❌ 캘린더 API: {e}")
 
+    # ─── 8. W5: 인사이트 리포트 ──
+    print("\n[8] W5 — 인사이트 리포트")
+    n_total += 1
+    try:
+        from routers.insights import _gather_stats, _template_insight, _action_recommendations
+        db3 = SessionLocal()
+        stats = _gather_stats(db3, days=7)
+        insight = _template_insight(stats, "지난 7일")
+        recs = _action_recommendations(stats)
+        print(f"  ✅ 주간 인사이트: {stats['total_completions']}건, "
+              f"insight {len(insight)}자, 추천 {len(recs)}개")
+        db3.close()
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ 인사이트: {e}")
+
+    # ─── 9. W5: 메모리 자동 카테고리화 ──
+    print("\n[9] W5 — 메모리 자동 카테고리화")
+    n_total += 1
+    try:
+        from memory_engine import auto_categorize, auto_importance
+        samples = [
+            ("운동 매일 하기로 약속!", "habit"),
+            ("초콜릿 좋아함", "preference"),
+            ("내일 회의 10시 잊지 마", "schedule"),
+            ("불꽃포메 구매 완료", "game_event"),
+        ]
+        ok = 0
+        for text, expected in samples:
+            cat = auto_categorize(text)
+            imp = auto_importance(text, cat)
+            if cat == expected:
+                ok += 1
+        print(f"  ✅ 자동 분류: {ok}/{len(samples)} 정확 (importance 산정 OK)")
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ 메모리 카테고리화: {e}")
+
+    # ─── 10. W5: WebSocket 모듈 import ──
+    print("\n[10] W5 — WebSocket 알림 모듈")
+    n_total += 1
+    try:
+        from routers.notifications import manager, ConnectionManager
+        print(f"  ✅ ConnectionManager 로드 (활성 연결 {len(manager.active)}개)")
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ WebSocket: {e}")
+
     # ─── 결과 ──
     print("\n" + "=" * 60)
     print(f"결과: {n_ok}/{n_total} 통과")

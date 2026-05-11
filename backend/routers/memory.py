@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
-from memory_engine import get_memory_engine
+from memory_engine import get_memory_engine, auto_categorize, auto_importance
 from models import UserMemory
 
 router = APIRouter(prefix="/api/memory", tags=["메모리"])
@@ -125,6 +125,55 @@ def cleanup_memory(req: CleanupReq, db: Session = Depends(get_db)):
 
     result = engine.cleanup(db, dry_run=req.dry_run)
     return result
+
+
+# ─── W5 D3: 자동 카테고리화 ──────────────────────────────
+class AutoAddReq(BaseModel):
+    text: str
+    user_id: int = 1
+
+
+@router.post("/auto-add")
+def auto_add(req: AutoAddReq, db: Session = Depends(get_db)):
+    """카테고리 + 중요도 자동 부여하고 추가."""
+    engine = get_memory_engine()
+    if not engine.enabled:
+        raise HTTPException(503, "메모리 엔진 비활성")
+
+    cat = auto_categorize(req.text)
+    imp = auto_importance(req.text, cat)
+    chroma_id = engine.add(
+        user_id=req.user_id,
+        text=req.text,
+        memory_type=cat,
+        importance=imp,
+        db=db,
+    )
+    return {
+        "chroma_id": chroma_id,
+        "auto_category": cat,
+        "auto_importance": imp,
+    }
+
+
+@router.post("/recategorize")
+def recategorize_all(db: Session = Depends(get_db)):
+    """기존 모든 메모리에 자동 카테고리 + 중요도 재할당."""
+    engine = get_memory_engine()
+    if not engine.enabled:
+        raise HTTPException(503, "메모리 엔진 비활성")
+
+    rows = db.query(UserMemory).all()
+    changed = 0
+    for r in rows:
+        new_cat = auto_categorize(r.content)
+        new_imp = auto_importance(r.content, new_cat)
+        if r.memory_type != new_cat or abs((r.importance_score or 0) - new_imp) > 0.05:
+            r.memory_type = new_cat
+            r.importance_score = new_imp
+            changed += 1
+    db.commit()
+    return {"checked": len(rows), "changed": changed}
 
 
 @router.delete("/{chroma_id}")
