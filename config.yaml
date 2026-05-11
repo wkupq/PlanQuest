@@ -1,6 +1,9 @@
 app:
   name: AI Assistant
   version: 1.0.0
+backup:
+  dir: backups
+  interval_days: 7
 chromadb:
   path: ./chroma_db
 db:
