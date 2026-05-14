@@ -31,7 +31,7 @@ def get_encryption_key():
         iterations=100000,
     )
     key_bytes = kdf.derive(key.encode())
-    return Fernet(base64.urlsafe_b64encode(key_bytes))
+    return Fernet(base64.urlsafe_b64encode( key_bytes))
 
 def backup():
     """DB 암호화 백업"""
@@ -41,7 +41,7 @@ def backup():
     os.makedirs(BACKUP_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"backup_{timestamp}")
-    os.makedirs(backup_path)
+    os.makedirs(backup_path, exist_ok=True)
     print(f"백업 폴더 생성: {backup_path}")
 
     # 2. 암호화 키 가져오기
