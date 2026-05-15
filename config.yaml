@@ -1,0 +1,20 @@
+app:
+  name: AI Assistant
+  version: 1.0.0
+backup:
+  dir: backups
+  interval_days: 7
+chromadb:
+  path: ./chroma_db
+db:
+  path: assistant.db
+  wal_mode: true
+memory:
+  ttl:
+    calendar: 60
+    conversation: 30
+    email: 7
+    routine: 90
+security:
+  max_tokens: 28000
+  similarity_threshold: 0.9
