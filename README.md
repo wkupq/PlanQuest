@@ -1,99 +1,114 @@
-﻿# ?뙮 PlanQuest ??AI 媛쒖씤 ?ㅼ?以꾨윭
+# 🌱 PlanQuest — AI 개인 스케줄러
 
-> 濡쒖뺄 AI(Ollama)? 寃뚯엫 ?붿냼瑜?寃고빀??媛쒖씤 ?쇱젙 愿由??쒖뒪?? 
-> Google Calendar / Gmail ?곕룞 쨌 ?듦? 異붿쟻 쨌 ?꾩씠?뚮찓?몃┃ 留?寃뚯엫
-
----
-
-## ?뱦 ?꾨줈?앺듃 媛쒖슂
-
-PlanQuest???꾩쟾 濡쒖뺄?먯꽌 ?ㅽ뻾?섎뒗 AI ?ㅼ?以꾨윭?낅땲??  
-?몃? ?쒕쾭 ?놁씠 ??而댄벂?곗뿉?쒕쭔 ?숈옉?섎ŉ, ?쇱젙怨??듦???愿由ы븯硫댁꽌 寃뚯엫泥섎읆 罹먮┃?곕? ?ㅼ슱 ???덉뒿?덈떎.
+> 로컬 AI(Ollama)와 게임 요소를 결합한 개인 일정 관리 시스템  
+> Google Calendar / Gmail 연동 · 습관 추적 · 아이소메트릭 맵 게임
 
 ---
 
-## ?룛截??쒖뒪??援ъ“
+## 📌 프로젝트 개요
+
+PlanQuest는 완전 로컬에서 실행되는 AI 스케줄러입니다.  
+외부 서버 없이 내 컴퓨터에서만 동작하며, 일정과 습관을 관리하면서 게임처럼 캐릭터를 키울 수 있습니다.
+
+---
+
+## 🏗️ 시스템 구조
 
 ```
 PlanQuest/
-?쒋?? ui/
-??  ?쒋?? backend/          # FastAPI 諛깆뿏??(?ы듃 8000)
-??  ??  ?쒋?? main.py
-??  ??  ?쒋?? models.py     # SQLAlchemy DB 紐⑤뜽
-??  ??  ?쒋?? schemas.py
-??  ??  ?쒋?? database.py
-??  ??  ?쒋?? seed_data.py
-??  ??  ?붴?? routers/
-??  ??      ?쒋?? chat.py       # AI 梨쀫큸 (RAG + Google 而⑦뀓?ㅽ듃)
-??  ??      ?쒋?? habits.py     # ?듦? CRUD
-??  ??      ?쒋?? trees.py      # ?섎Т ?깆옣 / ?섑솗
-??  ??      ?쒋?? shop.py       # ?곸젏
-??  ??      ?쒋?? placement.py  # ?꾩씠??諛곗튂
-??  ??      ?붴?? user.py       # ?좎? ?꾨줈????  ?붴?? frontend/         # React ?꾨줎?몄뿏??(?ы듃 3000)
-??      ?붴?? src/
-??          ?쒋?? App.js
-??          ?쒋?? api.js
-??          ?붴?? components/
-??              ?쒋?? ChatDashboard.js   # AI 梨꾪똿 (?ㅽ듃由щ컢)
-??              ?쒋?? IsometricMap.js    # ?꾩씠?뚮찓?몃┃ 留???              ?쒋?? HabitPanel.js      # ?듦? 愿由???              ?쒋?? CalendarPanel.js   # 罹섎┛????              ?쒋?? ShopPanel.js       # ?곸젏
-??              ?쒋?? InventoryPanel.js  # ?몃깽?좊━
-??              ?붴?? OllamaPopup.js     # Ollama ?ㅼ튂 ?덈궡
-?붴?? project-files/        # AI 諛깆뿏??(?ы듃 8001)
-    ?쒋?? rag_chain.py       # RAGChain (ChromaDB + BM25 + RRF)
-    ?쒋?? auth_manager.py    # Google OAuth 2.0 (keyring ???
-    ?쒋?? gmail_sync.py      # Gmail 利앸텇 ?숆린??    ?쒋?? memory.py          # TTL 湲곕컲 硫붾え由??쒖뒪??    ?쒋?? scheduler.py       # APScheduler 諛깃렇?쇱슫???묒뾽
-    ?쒋?? security.py        # ?꾨＼?꾪듃 ?몄젥??諛⑹뼱 / ?낅젰 寃利?    ?쒋?? masking.py         # 誘쇨컧?뺣낫 留덉뒪??    ?붴?? notifier.py        # ?щ줈?ㅽ뵆?ロ뤌 ?뚮┝
+├── ui/
+│   ├── backend/          # FastAPI 백엔드 (포트 8000)
+│   │   ├── main.py
+│   │   ├── models.py     # SQLAlchemy DB 모델
+│   │   ├── schemas.py
+│   │   ├── database.py
+│   │   ├── seed_data.py
+│   │   └── routers/
+│   │       ├── chat.py       # AI 챗봇 (RAG + Google 컨텍스트)
+│   │       ├── habits.py     # 습관 CRUD
+│   │       ├── trees.py      # 나무 성장 / 수확
+│   │       ├── shop.py       # 상점
+│   │       ├── placement.py  # 아이템 배치
+│   │       └── user.py       # 유저 프로필
+│   └── frontend/         # React 프론트엔드 (포트 3000)
+│       └── src/
+│           ├── App.js
+│           ├── api.js
+│           └── components/
+│               ├── ChatDashboard.js   # AI 채팅 (스트리밍)
+│               ├── IsometricMap.js    # 아이소메트릭 맵
+│               ├── HabitPanel.js      # 습관 관리
+│               ├── CalendarPanel.js   # 캘린더
+│               ├── ShopPanel.js       # 상점
+│               ├── InventoryPanel.js  # 인벤토리
+│               └── OllamaPopup.js     # Ollama 설치 안내
+└── project-files/        # AI 백엔드 (포트 8001)
+    ├── rag_chain.py       # RAGChain (ChromaDB + BM25 + RRF)
+    ├── auth_manager.py    # Google OAuth 2.0 (keyring 저장)
+    ├── gmail_sync.py      # Gmail 증분 동기화
+    ├── memory.py          # TTL 기반 메모리 시스템
+    ├── scheduler.py       # APScheduler 백그라운드 작업
+    ├── security.py        # 프롬프트 인젝션 방어 / 입력 검증
+    ├── masking.py         # 민감정보 마스킹
+    └── notifier.py        # 크로스플랫폼 알림
 ```
 
 ---
 
-## ?숋툘 二쇱슂 湲곕뒫
+## ⚙️ 주요 기능
 
-### ?쨼 AI ?ㅼ?以꾨윭
-- **濡쒖뺄 LLM**: Ollama + Qwen2.5 14B 湲곕컲
-- **RAG ?뚯씠?꾨씪??*: ChromaDB(諛吏? + BM25(?ъ냼) + RRF 蹂묓빀 + bge-reranker
-- **而⑦뀓?ㅽ듃 二쇱엯**: DB ?듦?/?쇱젙 + Google Calendar + Gmail ?곗씠?곕? AI???먮룞 二쇱엯
-- **?ㅽ듃由щ컢 ?묐떟**: SSE 諛⑹떇?쇰줈 ?ㅼ떆媛??좏겙 異쒕젰
+### 🤖 AI 스케줄러
+- **로컬 LLM**: Ollama + Qwen2.5 14B 기반
+- **RAG 파이프라인**: ChromaDB(밀집) + BM25(희소) + RRF 병합 + bge-reranker
+- **컨텍스트 주입**: DB 습관/일정 + Google Calendar + Gmail 데이터를 AI에 자동 주입
+- **스트리밍 응답**: SSE 방식으로 실시간 토큰 출력
 
-### ?뱟 Google ?곕룞
-- **Google Calendar**: OAuth 2.0 ?몄쬆, 7?쇱튂 ?쇱젙 議고쉶
-- **Gmail**: historyId 湲곕컲 利앸텇 ?숆린??(以묐났 ?놁쓬)
-- **?좏겙 蹂댁븞**: keyring?쇰줈 OS 蹂댁븞 ??μ냼???뷀샇?????
-### ?뙮 寃뚯엫 ?쒖뒪??- **?듦? ?꾨즺 ???섑듃 ?띾뱷 ???덈꺼??*
-- **?섎Т ?깆옣**: ?듦? ?꾨즺 ???⑥븮 ???덉떦 ???묒??섎Т ???곕굹臾?- **?꾩씠?뚮찓?몃┃ 留?*: 援щℓ???꾩씠?쒖쓣 留듭뿉 ?먯쑀濡?쾶 諛곗튂
-- **?곸젏**: ?숇Ъ쨌?섎Т쨌嫄대Ъ ?꾩씠??(common ~ legendary)
+### 📅 Google 연동
+- **Google Calendar**: OAuth 2.0 인증, 7일치 일정 조회
+- **Gmail**: historyId 기반 증분 동기화 (중복 없음)
+- **토큰 보안**: keyring으로 OS 보안 저장소에 암호화 저장
 
-### ?뵏 蹂댁븞
-- ?꾨＼?꾪듃 ?몄젥??諛⑹뼱 (`security.py`)
-- ?몃? ?곗씠???뚮뱶諛뺤떛 (`<external_content>` ?쒓렇 遺꾨━)
-- 誘쇨컧?뺣낫 ?먮룞 留덉뒪??(移대뱶踰덊샇쨌二쇰?踰덊샇쨌?꾪솕踰덊샇)
+### 🌱 게임 시스템
+- **습관 완료 → 하트 획득 → 레벨업**
+- **나무 성장**: 습관 완료 시 씨앗 → 새싹 → 작은나무 → 큰나무
+- **아이소메트릭 맵**: 구매한 아이템을 맵에 자유롭게 배치
+- **상점**: 동물·나무·건물 아이템 (common ~ legendary)
+
+### 🔒 보안
+- 프롬프트 인젝션 방어 (`security.py`)
+- 외부 데이터 샌드박싱 (`<external_content>` 태그 분리)
+- 민감정보 자동 마스킹 (카드번호·주민번호·전화번호)
 
 ---
 
-## ?? ?ㅽ뻾 諛⑸쾿
+## 🚀 실행 방법
 
-### ?ъ쟾 以鍮?- Python 3.10+
+### 사전 준비
+- Python 3.10+
 - Node.js 18+
-- [Ollama](https://ollama.ai) ?ㅼ튂 ??紐⑤뜽 ?ㅼ슫濡쒕뱶
+- [Ollama](https://ollama.ai) 설치 후 모델 다운로드
 
 ```bash
 ollama pull qwen2.5:14b
 ```
 
-### ?곕???1 ??UI 諛깆뿏??```bash
+### 터미널 1 — UI 백엔드
+```bash
 cd ui/backend
 venv\Scripts\activate
 pip install -r requirements.txt
 python main.py
 ```
 
-### ?곕???2 ???꾨줎?몄뿏??```bash
+### 터미널 2 — 프론트엔드
+```bash
 cd ui/frontend
 npm install
 npm start
 ```
 
-### ?곕???3 ??AI 諛깆뿏??```bash
+### 터미널 3 — AI 백엔드
+```bash
 cd project-files
 ..\.venv\Scripts\activate
 python rag_pipeline.py
@@ -101,29 +116,31 @@ python rag_pipeline.py
 
 ---
 
-## ?뵎 Google ?곕룞 ?ㅼ젙
+## 🔑 Google 연동 설정
 
-1. [Google Cloud Console](https://console.cloud.google.com)?먯꽌 OAuth 2.0 ?대씪?댁뼵??ID ?앹꽦
-2. `project-files/client_secret.json` ???3. 泥??ㅽ뻾 ??釉뚮씪?곗??먯꽌 Google 怨꾩젙 ?몄쬆
+1. [Google Cloud Console](https://console.cloud.google.com)에서 OAuth 2.0 클라이언트 ID 생성
+2. `project-files/client_secret.json` 저장
+3. 첫 실행 시 브라우저에서 Google 계정 인증
 
 ---
 
-## ?뾺截?釉뚮옖移?
-| 釉뚮옖移?| ?댁슜 |
+## 🗂️ 브랜치
+
+| 브랜치 | 내용 |
 |--------|------|
-| `main` | ?듯빀 硫붿씤 肄붾뱶 |
-| `teamc` | TeamC 湲곗뿬 肄붾뱶 (硫붾え由?룹뒪耳以꾨윭쨌蹂댁븞) |
-| `teamd` | TeamD 湲곗뿬 肄붾뱶 (UI쨌?꾨줎?몄뿏?? |
+| `main` | 통합 메인 코드 |
+| `teamc` | TeamC 기여 코드 (메모리·스케줄러·보안) |
+| `teamd` | TeamD 기여 코드 (UI·프론트엔드) |
 
 ---
 
-## ?썱截?湲곗닠 ?ㅽ깮
+## 🛠️ 기술 스택
 
-| 遺꾨쪟 | 湲곗닠 |
+| 분류 | 기술 |
 |------|------|
 | AI/LLM | Ollama, Qwen2.5 14B, LangChain |
 | RAG | ChromaDB, BM25, bge-reranker |
-| 諛깆뿏??| FastAPI, SQLAlchemy, SQLite |
-| ?꾨줎?몄뿏??| React, Axios |
+| 백엔드 | FastAPI, SQLAlchemy, SQLite |
+| 프론트엔드 | React, Axios |
 | Google API | Calendar v3, Gmail v1, OAuth 2.0 |
-| 蹂댁븞 | keyring, APScheduler |
+| 보안 | keyring, APScheduler |
