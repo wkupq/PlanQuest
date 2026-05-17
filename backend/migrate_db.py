@@ -41,6 +41,10 @@ REQUIRED_COLUMNS = {
         "hearts_available": "INTEGER DEFAULT 0",
         "last_harvest":     "DATETIME",
     },
+    # 배치 캐릭터 시간당 하트 생성용
+    "placed_items": {
+        "last_heart_gen": "DATETIME",
+    },
     "user_profile": {
         "level":               "INTEGER DEFAULT 1",
         "total_hearts_earned": "INTEGER DEFAULT 0",

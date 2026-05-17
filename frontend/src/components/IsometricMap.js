@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { placeItem, removePlacedItem, moveTree } from '../api';
+import { placeItem, removePlacedItem, moveTree, movePlacedItem } from '../api';
 import TreeIcon from './TreeIcon';
 import { computeNextAlarm } from '../utils/timeUtils';
 
@@ -102,12 +102,8 @@ export default function IsometricMap({
           await moveTree(moveMode.id, gx, gy);
           showToast(`🔄 '${moveMode.name}' 이동 완료`);
         } else if (moveMode.type === 'character') {
-          // 캐릭터 이동 = placeItem 재호출 (upsert: 기존 PlacedItem 의 grid 만 갱신)
-          await placeItem({
-            owned_item_id: moveMode.ownedItemId,
-            grid_x: gx,
-            grid_y: gy,
-          });
+          // PlacedItem.id 기준으로 정확하게 이동 (버그 수정)
+          await movePlacedItem(moveMode.id, gx, gy);
           showToast(`🔄 '${moveMode.name}' 이동 완료`);
         }
         onSetMoveMode(null);
@@ -214,6 +210,7 @@ export default function IsometricMap({
     const { x, y } = gridToScreen(item.grid_x, item.grid_y);
     const z = item.grid_x + item.grid_y;
     const isMoving = moveMode && moveMode.type === 'character' && moveMode.id === item.id;
+    const pendingHearts = item.pending_hearts || 0;
     billboards.push(
       <div
         key={`char-${item.id}`}
@@ -221,12 +218,18 @@ export default function IsometricMap({
         style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, zIndex: 100 + z + 1 }}
         onClick={(e) => {
           e.stopPropagation();
-          if (placementMode || moveMode) return;  // 모드 중에는 모달 X
+          if (placementMode || moveMode) return;
           onCharClick && onCharClick(item);
         }}
         onContextMenu={(e) => handleRemove(e, item)}
         title={`${item.item_name}\n클릭: 메뉴 / 우클릭: 회수`}
       >
+        {/* 수확 가능 하트 (우상단) — 등급 배지는 모달에서만 표시 */}
+        {pendingHearts > 0 && (
+          <span className="item-heart" title={`수확 ${pendingHearts}개 가능`}>
+            ❤️{pendingHearts}
+          </span>
+        )}
         {imgSrc ? (
           <img
             src={imgSrc}

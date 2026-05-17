@@ -11,7 +11,11 @@ from database import engine, Base
 from seed_data import seed_database
 from ollama_manager import start_ollama_server, stop_ollama_server, is_ollama_installed
 
-from routers import user, habits, trees, shop, placement, chat, memory, proactive, calendar, insights, notifications
+from routers import (
+    user, habits, trees, shop, placement, chat,
+    memory, proactive, calendar, insights, notifications,
+    suggestions, feedback,  # W6 추가
+)
 
 # 로깅 설정
 logging.basicConfig(
@@ -97,6 +101,8 @@ app.include_router(proactive.router)
 app.include_router(calendar.router)
 app.include_router(insights.router)
 app.include_router(notifications.router)
+app.include_router(suggestions.router)  # W6 D1-2
+app.include_router(feedback.router)      # W6 D4
 
 
 # ─── SIGTERM/SIGINT 핸들러 (Ctrl+C 안전 종료) ───

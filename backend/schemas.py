@@ -90,3 +90,5 @@ class PlacedItemResponse(BaseModel):
     item_emoji: str
     item_image_url: str = ""
     item_category: str
+    rarity: str = "common"           # 등급 (common/rare/unique/epic/legendary)
+    pending_hearts: int = 0          # 지금 수확 가능한 하트

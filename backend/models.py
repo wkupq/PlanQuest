@@ -67,7 +67,7 @@ class OwnedItem(Base):
 
 
 class PlacedItem(Base):
-    """맵에 배치된 아이템"""
+    """맵에 배치된 아이템 — 시간당 하트 생성 추적도 같이"""
     __tablename__ = "placed_items"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -76,6 +76,9 @@ class PlacedItem(Base):
     grid_x = Column(Integer, nullable=False)
     grid_y = Column(Integer, nullable=False)
     placed_at = Column(DateTime, default=datetime.utcnow)
+
+    # 시간당 하트 생성용 — 마지막 수확/생성 시각
+    last_heart_gen = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("UserProfile", back_populates="placed_items")
     owned_item = relationship("OwnedItem")

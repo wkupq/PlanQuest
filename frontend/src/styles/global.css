@@ -225,9 +225,11 @@ body {
 }
 
 .billboard-char {
-  width: 150px;
+  /* 비율 다양한 캐릭터 모두 자연스럽게 들어가게 — max 박스 안에서 비율 유지 */
+  max-width: 220px;
+  max-height: 220px;
+  width: auto;
   height: auto;
-  max-height: 200px;
   object-fit: contain;
   object-position: center bottom;
   display: block;
@@ -240,7 +242,7 @@ body {
 
 /* 픽셀 아트 — 보간 X */
 .billboard-char.pixel-art {
-  width: 180px;
+  max-width: 220px;
   max-height: 220px;
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
@@ -298,6 +300,35 @@ body {
   filter: drop-shadow(0 2px 2px rgba(0,0,0,0.3));
   z-index: 5;
   animation: heart-bob 1.2s ease-in-out infinite;
+}
+
+/* 등급 배지 — 캐릭터 좌상단 */
+.rarity-badge {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 7;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.rarity-badge.rarity-common    { background: #e0e0e0; color: #555; display: none; }
+.rarity-badge.rarity-rare      { background: linear-gradient(135deg, #7eb8ea, #4a90d9); color: white; }
+.rarity-badge.rarity-unique    { background: linear-gradient(135deg, #b794f4, #805ad5); color: white; }
+.rarity-badge.rarity-epic      { background: linear-gradient(135deg, #f6ad55, #dd6b20); color: white; }
+.rarity-badge.rarity-legendary {
+  background: linear-gradient(135deg, #fbd38d, #ed8936, #f56565);
+  color: white;
+  animation: rarity-pulse 2s ease-in-out infinite;
+}
+@keyframes rarity-pulse {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(245, 101, 101, 0.5)); }
+  50%      { filter: brightness(1.15) drop-shadow(0 0 6px rgba(245, 101, 101, 0.8)); }
 }
 
 /* 나무 위 시간 배지 — 좌상단에 작게 (분 단위) */

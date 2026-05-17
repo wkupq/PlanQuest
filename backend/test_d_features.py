@@ -236,6 +236,48 @@ def main():
     except Exception as e:
         print(f"  ❌ WebSocket: {e}")
 
+    # ─── 11. W6: 자동 일정 추천 ──
+    print("\n[11] W6 — 자동 일정 추천")
+    n_total += 1
+    try:
+        from routers.suggestions import suggest_habits, find_empty_slots
+        db_t = SessionLocal()
+        sug = suggest_habits(limit=3, db=db_t)
+        empty = find_empty_slots(db=db_t)
+        db_t.close()
+        print(f"  ✅ 추천 {len(sug['suggestions'])}개, 빈 시간대 {len(empty['empty_buckets'])}개")
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ 추천 엔진: {e}")
+
+    # ─── 12. W6: 슬래시 커맨드 ──
+    print("\n[12] W6 — 슬래시 커맨드")
+    n_total += 1
+    try:
+        from slash_commands import is_command, dispatch_command, HANDLERS
+        assert is_command("/hearts")
+        assert not is_command("hello")
+        out = dispatch_command("/help")
+        assert out and "도움말" not in out  # 도움말 텍스트 출력됨
+        print(f"  ✅ 명령어 {len(HANDLERS)}개 등록, dispatch 동작 OK")
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ 슬래시 커맨드: {e}")
+
+    # ─── 13. W6: 피드백 시스템 ──
+    print("\n[13] W6 — 피드백 시스템")
+    n_total += 1
+    try:
+        from routers.feedback import feedback_stats
+        db_t = SessionLocal()
+        stats = feedback_stats(db=db_t)
+        db_t.close()
+        print(f"  ✅ 피드백 통계: 총 {stats['total_feedback']}건 "
+              f"(👍 {stats['good']}, 👎 {stats['bad']})")
+        n_ok += 1
+    except Exception as e:
+        print(f"  ❌ 피드백: {e}")
+
     # ─── 결과 ──
     print("\n" + "=" * 60)
     print(f"결과: {n_ok}/{n_total} 통과")

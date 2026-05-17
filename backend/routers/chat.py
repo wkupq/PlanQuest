@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from agent_core import get_agent
+from slash_commands import is_command, dispatch_command
 
 router = APIRouter(prefix="/api", tags=["채팅"])
 
@@ -76,6 +77,15 @@ async def chat_stream(req: ChatRequest):
     """
 
     async def event_generator():
+        # ─── 슬래시 커맨드 우선 처리 (Ollama 없어도 동작) ───
+        if is_command(req.message):
+            response = dispatch_command(req.message) or "(빈 응답)"
+            for char in response:
+                yield f"data: {json.dumps({'token': char}, ensure_ascii=False)}\n\n"
+                await asyncio.sleep(0.005)
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            return
+
         # Ollama가 실행 중이 아니면 폴백 응답
         if not is_ollama_running():
             fallback = (

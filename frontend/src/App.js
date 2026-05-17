@@ -249,16 +249,19 @@ export default function App() {
           placedItem={selectedChar}
           onClose={() => setSelectedChar(null)}
           onMove={(item) => {
+            // PlacedItem.id 로 정확하게 이동 (버그 수정)
             setMoveMode({
               type: 'character',
               id: item.id,
-              ownedItemId: item.owned_item_id,
               name: item.item_name,
-              shopItemId: null,  // 이동은 owned_item_id 기준
             });
             setSelectedChar(null);
           }}
           onRemoved={refresh}
+          onHarvested={(data) => {
+            showHeartAnim(window.innerWidth / 2, window.innerHeight / 2 - 50, data.harvested);
+            refresh();
+          }}
           showToast={showToast}
         />
       )}
