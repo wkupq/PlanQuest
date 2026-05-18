@@ -1,0 +1,15 @@
+sqlalchemy
+alembic
+chromadb
+rank-bm25
+apscheduler
+plyer
+keyring
+pyyaml
+loguru
+schedule
+cryptography
+pytest
+pytest-cov
+mypy
+types-PyYAML

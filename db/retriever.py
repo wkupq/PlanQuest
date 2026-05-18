@@ -1,6 +1,7 @@
 import chromadb
 import pickle
 from rank_bm25 import BM25Okapi
+from config_loader import get_bm25_path
 
 # ChromaDB 초기화
 client = chromadb.PersistentClient(path="./chroma_db")
@@ -10,7 +11,7 @@ def tokenize(text):
     return text.split()
 
 def load_bm25():
-    with open("bm25_index.pkl", "rb") as f:
+    with open(get_bm25_path(), "rb") as f:
         return pickle.load(f)
 
 def rrf_search(query: str, top_k: int = 3):

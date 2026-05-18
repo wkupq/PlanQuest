@@ -3,6 +3,7 @@ import chromadb
 import pickle
 from datetime import datetime
 from rank_bm25 import BM25Okapi
+from config_loader import get_bm25_path
 
 DB_PATH = "assistant.db"
 client = chromadb.PersistentClient(path="./chroma_db")

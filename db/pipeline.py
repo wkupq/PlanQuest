@@ -2,6 +2,7 @@ import sqlite3
 import chromadb
 import pickle
 from rank_bm25 import BM25Okapi
+from config_loader import get_bm25_path
 
 DB_PATH = "assistant.db"
 
@@ -16,7 +17,7 @@ def tokenize(text):
 
 def load_bm25():
     try:
-        with open("bm25_index.pkl", "rb") as f:
+        with open(get_bm25_path(), "rb") as f:
             return pickle.load(f)
     except FileNotFoundError:
         return None

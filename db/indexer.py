@@ -1,6 +1,7 @@
 import chromadb
 import pickle
 from rank_bm25 import BM25Okapi
+from config_loader import get_bm25_path
 
 # ChromaDB 초기화
 client = chromadb.PersistentClient(path="./chroma_db")
@@ -28,7 +29,7 @@ def add_documents(documents: list[str], ids: list[str]):
     bm25 = BM25Okapi(tokenized)
 
     # 3. BM25 인덱스를 파일로 저장 (pickle 직렬화)
-    with open("bm25_index.pkl", "wb") as f:
+    with open(get_bm25_path(), "wb") as f:
         pickle.dump({
             "bm25": bm25,
             "documents": documents,
@@ -38,7 +39,7 @@ def add_documents(documents: list[str], ids: list[str]):
 
 def load_bm25():
     """저장된 BM25 인덱스 불러오기"""
-    with open("bm25_index.pkl", "rb") as f:
+    with open(get_bm25_path(), "rb") as f:
         return pickle.load(f)
 
 # 테스트 실행
