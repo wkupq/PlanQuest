@@ -260,26 +260,22 @@ WS   /ws/notifications                    # 실시간 푸시
 
 ## 👥 팀 구성 (캡스톤)
 
-| 팀원 | 역할 | 작업 영역 |
-|------|------|----------|
-| A | 프로젝트 매니저 + 백엔드 코어 | 게임 로직 / DB / 라우터 |
-| B | 프론트엔드 + 게임 UI | React / 아이소메트릭 / 애니메이션 |
-| C | 게임 디자인 + 캐릭터 | 일러스트 / 밸런스 / UX |
-| **D** (본 README 담당) | **AI 백엔드** | **에이전트 / RAG / 인사이트 / 외부 연동** |
+| 팀원 | 모듈 | 핵심 과제 | 주차 |
+|------|------|-----------|------|
+| **A** | `ollama_runner` · `agent` · `rag/` · `LoRA(train/merge/GGUF)` | context RAG 3단계 연결 + GIL 우회 + GGUF 변환 | W1(RAG) · W4(데이터) · W5(LoRA) |
+| **B** | `calendar` · `email` · `OAuth` · `masking` · `tenacity` · 설치가이드 | OAuth 토큰 갱신 + 증분 동기화 + Rate Limit | W1(API) · W2(연동) · W3(보안) |
+| **C** | `memory` · `scheduler` · `ChromaDB` · `BM25` · `SQLCipher` · `Alembic` · `backup` | 임계값 로직 + 정합성 검사 + SQLCipher+Alembic 연동 | W1(DB) · W2(메모리) · W3(보안) · W5(백업) |
+| **D** (본 저장소 담당) | `dashboard` · `chatbot` · `game_screen` · `game/` · `PyInstaller` · `ollama_manager` | 패키징 의존성 충돌 + 게임 UI 성능 | W1(UI) · W3~4(게임) · W5(패키징) |
 
-### D 역할 진척도 (W3 → W6)
-- ✅ W3 D1-3: LangChain ReAct 에이전트
-- ✅ W3 D4-6: ChromaDB RAG 메모리 + 임계값 엔진
-- ✅ W3 D7-10: Google Calendar/Gmail 스캐폴드
-- ✅ W4 D1-3: 게임 상태 인식 도구 6개
-- ✅ W4 D4-6: 능동 추천 + 패턴 분석
-- ✅ W4 D7-10: 캘린더 히트맵 + 완료 기록 도구 (총 18)
-- ✅ W5 D1-2: AI 인사이트 리포트 (LLM)
-- ✅ W5 D3: 메모리 자동 카테고리화
-- ✅ W5 D4: WebSocket 실시간 알림
-- ✅ W6 D1-2: 자동 일정 추천 엔진
-- ✅ W6 D3: 챗봇 슬래시 커맨드 12개
-- ✅ W6 D4: AI 응답 피드백 시스템
+### D 역할 진척도 (W1 → W6)
+- ✅ W1: 게임 화면 / 대시보드 / 챗봇 UI 기본 구조
+- ✅ W2: 일정 관리 + 나무 성장 시스템 + SSE 스트리밍 채팅
+- ✅ W3~4: 게임 화면 (아이소메트릭 배치도 7×5, 빌보드 렌더링, 캐릭터/나무 모달)
+- ✅ W3~4: 챗봇 (Ollama 자동 관리, agent 통합, 슬래시 커맨드 12개)
+- ✅ W5: 캘린더 히트맵 + 인사이트 대시보드 + WebSocket 알림
+- ✅ W5~: `ollama_manager` 자동 시작/종료, graceful shutdown
+- ✅ W6: 자동 일정 추천 + 응답 피드백 시스템 + 14 캐릭터 등급 시스템
+- ⏳ W5~ 진행 중: PyInstaller 패키징 + 의존성 충돌 해결
 
 상세 문서:
 - [`WEEK3_ROADMAP.md`](WEEK3_ROADMAP.md), [`WEEK3-4_ROADMAP_D.md`](WEEK3-4_ROADMAP_D.md)
