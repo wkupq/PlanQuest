@@ -41,7 +41,7 @@ def rebuild_bm25():
 
     if not all_data["documents"]:
         print("ChromaDB가 비어있음 -> BM25 인덱스 초기화")
-        with open("bm25_index.pkl", "wb") as f:
+        with open(get_bm25_path(), "wb") as f:
             pickle.dump({
                 "bm25": None,
                 "documents": [],
@@ -56,7 +56,7 @@ def rebuild_bm25():
     tokenized = [doc.split() for doc in documents]
     bm25 = BM25Okapi(tokenized)
 
-    with open("bm25_index.pkl", "wb") as f:
+    with open(get_bm25_path(), "wb") as f:
         pickle.dump({
             "bm25": bm25,
             "documents": documents,
