@@ -1,11 +1,41 @@
 """Plan-Quest - FastAPI 백엔드 메인"""
 import signal
 import sys
+import os
 import logging
+import webbrowser
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+
+# ─── 패키징 (PyInstaller) 환경 감지 ─────────────────────
+def _is_frozen() -> bool:
+    """PyInstaller 로 패키징된 상태인지."""
+    return getattr(sys, "frozen", False)
+
+
+def _frontend_build_dir():
+    """프론트 build 폴더 경로 (있으면). PyInstaller 와 dev 모두 대응."""
+    candidates = []
+    if _is_frozen():
+        # PyInstaller datas 로 묶여서 _MEIPASS/frontend_build 에 들어감
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "frontend_build")
+        # 또는 exe 옆 (--onedir)
+        candidates.append(Path(sys.executable).parent / "frontend_build")
+    # dev 환경
+    candidates.append(Path(__file__).resolve().parent.parent / "frontend" / "build")
+
+    for c in candidates:
+        if c.exists() and (c / "index.html").exists():
+            return c
+    return None
 
 from database import engine, Base
 from seed_data import seed_database
@@ -103,6 +133,29 @@ app.include_router(insights.router)
 app.include_router(notifications.router)
 app.include_router(suggestions.router)  # W6 D1-2
 app.include_router(feedback.router)      # W6 D4
+
+
+# ─── 프론트 정적 파일 서빙 (PyInstaller 패키지 시 필수) ──
+_frontend_dir = _frontend_build_dir()
+if _frontend_dir:
+    logger.info(f"📦 프론트 정적 파일 서빙: {_frontend_dir}")
+    # /assets, /static 같은 React 빌드 파일들
+    app.mount("/static", StaticFiles(directory=str(_frontend_dir / "static")), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_react(full_path: str):
+        """API 가 아닌 모든 경로는 index.html 로 (React Router 대응)."""
+        if full_path.startswith("api/") or full_path.startswith("ws/"):
+            # API 라우터 도달 전이라면 404 가 자연스러움
+            from fastapi import HTTPException
+            raise HTTPException(404)
+        target = _frontend_dir / full_path
+        if target.exists() and target.is_file():
+            return FileResponse(target)
+        # SPA fallback — 모든 미매칭 → index.html
+        return FileResponse(_frontend_dir / "index.html")
+else:
+    logger.info("ℹ️ 프론트 build 폴더 없음 — npm start 로 별도 실행 필요")
 
 
 # ─── SIGTERM/SIGINT 핸들러 (Ctrl+C 안전 종료) ───
