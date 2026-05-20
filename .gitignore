@@ -111,3 +111,25 @@ ui/backend/*.pyc
 db/chroma_db/
 db/*.pkl
 db/*.db
+
+# =============================================
+# 추가 정리 규칙
+# =============================================
+# 루트 생성 파일
+*.db
+*.db-journal
+*.pkl
+*.coverage
+.coverage
+chroma_db/
+backups/
+logs/
+config.yaml
+
+# node_modules (모든 위치)
+**/node_modules/
+
+# Python 캐시 (모든 위치)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
