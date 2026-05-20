@@ -102,6 +102,30 @@ except Exception as e:
     _ai_available = False
     print(f"[WARN] RAGChain 로드 실패 — AI 비활성화: {e}")
 
+# DataCollector — 실패해도 채팅은 계속 동작
+try:
+    from data_collector import DataCollector
+    _collector = DataCollector()
+    print("[INFO] DataCollector 초기화 완료 — 대화 데이터 수집 시작")
+except Exception as e:
+    _collector = None
+    print(f"[WARN] DataCollector 초기화 실패 (수집 비활성화): {e}")
+
+
+def _log_interaction(user_msg: str, ai_reply: str, context: str = "") -> None:
+    """대화를 LoRA 학습 데이터로 저장. 실패해도 무시."""
+    if _collector is None or not user_msg.strip() or not ai_reply.strip():
+        return
+    try:
+        _collector.log_interaction(
+            question=user_msg,
+            answer=ai_reply,
+            context_used=context[:500] if context else "",
+            source="chat_stream",
+        )
+    except Exception as e:
+        print(f"[WARN] 데이터 수집 실패 (무시): {e}")
+
 # ── 한국어 전용 응답 필터 ─────────────────────────────────────
 # CJK 통합 한자(U+4E00–U+9FFF), CJK 확장A(U+3400–U+4DBF) 제거
 # 한글(U+AC00–U+D7A3), 한글 자모(U+1100–U+11FF) 는 보존
@@ -238,6 +262,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
 
         full_prompt = _build_prompt_korean(req.message, full_context)
         reply = _clean_korean(_chain.ask(full_prompt))
+        _log_interaction(req.message, reply, full_prompt[:300])
         return ChatResponse(reply=reply, ai_available=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 오류: {str(e)}")
@@ -287,12 +312,14 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"컨텍스트 빌드 오류: {str(e)}")
 
     async def token_stream():
+        collected_reply = []
         try:
             if hasattr(_chain, "ask_stream"):
                 # 스트리밍 모드: 토큰마다 CJK 제거 후 전송
                 async for token in _chain.ask_stream(full_prompt):
                     clean = _clean_korean(token)
                     if clean:
+                        collected_reply.append(clean)
                         payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
                         yield f"data: {payload}\n\n"
                     await asyncio.sleep(0)
@@ -301,6 +328,7 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                 loop = asyncio.get_event_loop()
                 reply = await loop.run_in_executor(None, _chain.ask, full_prompt)
                 reply = _clean_korean(reply)
+                collected_reply.append(reply)
                 for word in reply.split(" "):
                     if word:
                         payload = _json.dumps({"token": word + " ", "done": False}, ensure_ascii=False)
@@ -308,6 +336,10 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                     await asyncio.sleep(0.02)
 
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
+
+            # 스트리밍 완료 후 데이터 수집
+            full_reply = "".join(collected_reply).strip()
+            _log_interaction(req.message, full_reply, full_prompt[:300])
 
         except Exception as e:
             err = _json.dumps({"error": str(e), "done": True}, ensure_ascii=False)
