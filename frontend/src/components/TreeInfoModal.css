@@ -1,0 +1,274 @@
+/* 씨앗/나무 정보 모달 */
+
+.tree-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: tree-modal-fade 0.18s ease-out;
+}
+
+@keyframes tree-modal-fade {
+  from { background: rgba(0, 0, 0, 0); }
+  to   { background: rgba(0, 0, 0, 0.4); }
+}
+
+.tree-modal {
+  background: #fff8ef;
+  border-radius: 18px;
+  padding: 22px 24px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  position: relative;
+  animation: tree-modal-pop 0.22s cubic-bezier(.2,.9,.3,1.1);
+}
+
+@keyframes tree-modal-pop {
+  from { transform: scale(0.85) translateY(10px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+.tree-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: #8B4513;
+  font-size: 18px;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.tree-modal-close:hover {
+  background: rgba(139, 69, 19, 0.12);
+}
+
+.tree-modal-header {
+  border-bottom: 1px dashed #d4b896;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.tree-modal-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #5D3A1A;
+  margin-bottom: 4px;
+}
+
+.tree-modal-stage {
+  font-size: 13px;
+  color: #8B6B47;
+}
+
+.tree-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tree-modal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.tree-modal-row-label {
+  color: #8B6B47;
+  font-weight: 500;
+}
+
+.tree-modal-row-value {
+  color: #3a2a1a;
+  font-weight: 600;
+  text-align: right;
+}
+
+.tree-modal-badge {
+  background: #c8e6a4;
+  color: #2d5a14;
+  text-align: center;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.tree-modal-harvest {
+  width: 100%;
+  background: linear-gradient(135deg, #ff7676, #e74c3c);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.35);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.tree-modal-harvest:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(231, 76, 60, 0.45);
+}
+
+.tree-modal-harvest:active {
+  transform: translateY(0);
+}
+
+.tree-modal-hint {
+  text-align: center;
+  font-size: 13px;
+  color: #8B6B47;
+  background: #f5e6d3;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+/* 다음 알람 카운트다운 박스 */
+.tree-modal-next {
+  background: linear-gradient(135deg, #fff5cc, #ffe8a0);
+  border: 1px solid #f5d97a;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0;
+}
+
+.tree-modal-next-label {
+  font-size: 11px;
+  color: #8B6B00;
+  font-weight: 500;
+}
+
+.tree-modal-next-when {
+  font-size: 16px;
+  font-weight: 700;
+  color: #5D3A1A;
+}
+
+.tree-modal-next-remain {
+  font-size: 13px;
+  color: #d97706;
+  font-weight: 600;
+}
+
+/* 이동 버튼 */
+.tree-modal-move {
+  width: 100%;
+  background: linear-gradient(135deg, #ffd166, #f5b942);
+  color: #5D3A1A;
+  border: none;
+  padding: 11px;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+  box-shadow: 0 3px 8px rgba(245, 185, 66, 0.3);
+  transition: transform 0.1s;
+}
+
+.tree-modal-move:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 12px rgba(245, 185, 66, 0.4);
+}
+
+/* 삭제 버튼 */
+.tree-modal-delete {
+  width: 100%;
+  background: transparent;
+  color: #8B4513;
+  border: 1px solid #d4b896;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tree-modal-delete:hover {
+  background: #fce4e4;
+  color: #c0392b;
+  border-color: #e8a8a8;
+}
+
+/* 삭제 확인 박스 */
+.tree-modal-confirm {
+  background: #fce4e4;
+  border: 1px solid #e8a8a8;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.tree-modal-confirm-text {
+  font-size: 13px;
+  color: #5D3A1A;
+  text-align: center;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.tree-modal-confirm-warn {
+  color: #c0392b;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.tree-modal-confirm-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.tree-modal-confirm-cancel,
+.tree-modal-confirm-yes {
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.tree-modal-confirm-cancel {
+  background: white;
+  color: #5D3A1A;
+  border: 1px solid #d4b896;
+}
+
+.tree-modal-confirm-cancel:hover {
+  background: #f5e6d3;
+}
+
+.tree-modal-confirm-yes {
+  background: #e74c3c;
+  color: white;
+}
+
+.tree-modal-confirm-yes:hover {
+  background: #c0392b;
+  transform: translateY(-1px);
+}

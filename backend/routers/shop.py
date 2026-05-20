@@ -27,6 +27,7 @@ def get_shop_items(category: Optional[str] = None, db: Session = Depends(get_db)
             category=item.category,
             price=item.price,
             emoji=item.emoji,
+            image_url=item.image_url or "",
             description=item.description,
             rarity=item.rarity,
             unlock_level=item.unlock_level,

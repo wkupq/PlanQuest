@@ -14,6 +14,8 @@ export const deleteHabit = (id) => API.delete(`/habits/${id}`);
 // 나무
 export const getTrees = () => API.get('/trees');
 export const harvestTree = (id) => API.post(`/trees/${id}/harvest`);
+export const moveTree = (id, grid_x, grid_y) =>
+  API.patch(`/trees/${id}/position`, { grid_x, grid_y });
 
 // 상점
 export const getShopItems = (category) =>
@@ -24,5 +26,15 @@ export const buyItem = (id) => API.post(`/shop/${id}/buy`);
 export const getPlacedItems = () => API.get('/placed-items');
 export const placeItem = (data) => API.post('/placed-items', data);
 export const removePlacedItem = (id) => API.delete(`/placed-items/${id}`);
+export const movePlacedItem = (id, grid_x, grid_y) =>
+  API.patch(`/placed-items/${id}/position`, { grid_x, grid_y });
+export const harvestPlacedItem = (id) =>
+  API.post(`/placed-items/${id}/harvest`);
+
+// 캘린더
+export const getCalendarMonth = (year, month) =>
+  API.get('/calendar/month', { params: { year, month } });
+export const getCalendarDay = (date) =>
+  API.get('/calendar/day', { params: { date } });
 
 export default API;

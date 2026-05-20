@@ -3,10 +3,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+from pydantic import BaseModel
 
 from database import get_db
-from models import UserProfile, Habit, TreeOnMap
+from models import UserProfile, Habit, TreeOnMap, PlacedItem
 from schemas import TreeResponse
+
+
+GRID_COLS = 7
+GRID_ROWS = 5
+
+
+class TreePositionRequest(BaseModel):
+    grid_x: int
+    grid_y: int
 
 router = APIRouter(prefix="/api", tags=["나무"])
 
@@ -25,8 +35,44 @@ def get_trees(db: Session = Depends(get_db)):
             grid_y=tree.grid_y,
             growth_stage=tree.growth_stage,
             hearts_available=tree.hearts_available,
+            # 일정 정보 (씨앗 클릭 정보 팝업용)
+            repeat_days=(habit.repeat_days if habit else []) or [],
+            times=(habit.times if habit else []) or [],
+            alarm_enabled=habit.alarm_enabled if habit else True,
+            hearts_reward=habit.hearts_reward if habit else 1,
+            streak=habit.streak if habit else 0,
+            completed_today=habit.completed_today if habit else False,
         ))
     return result
+
+
+@router.patch("/trees/{tree_id}/position")
+def move_tree(tree_id: int, req: TreePositionRequest, db: Session = Depends(get_db)):
+    """나무 위치 이동."""
+    if not (0 <= req.grid_x < GRID_COLS and 0 <= req.grid_y < GRID_ROWS):
+        raise HTTPException(400, f"좌표가 그리드 밖입니다 ({GRID_COLS}x{GRID_ROWS})")
+
+    tree = db.query(TreeOnMap).filter(TreeOnMap.id == tree_id).first()
+    if not tree:
+        raise HTTPException(404, "나무를 찾을 수 없습니다")
+
+    # 이미 다른 나무/캐릭터가 그 자리에 있으면 거부 (또는 swap 가능, 일단 거부)
+    other_tree = db.query(TreeOnMap).filter(
+        TreeOnMap.id != tree_id,
+        TreeOnMap.grid_x == req.grid_x,
+        TreeOnMap.grid_y == req.grid_y,
+    ).first()
+    placed = db.query(PlacedItem).filter(
+        PlacedItem.grid_x == req.grid_x,
+        PlacedItem.grid_y == req.grid_y,
+    ).first()
+    if other_tree or placed:
+        raise HTTPException(409, "이미 다른 항목이 있는 자리입니다")
+
+    tree.grid_x = req.grid_x
+    tree.grid_y = req.grid_y
+    db.commit()
+    return {"message": "위치 변경 완료", "grid_x": tree.grid_x, "grid_y": tree.grid_y}
 
 
 @router.post("/trees/{tree_id}/harvest")
