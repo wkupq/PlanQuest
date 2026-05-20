@@ -1,5 +1,6 @@
 import chromadb
 import pickle
+from config_loader import get_bm25_path
 
 def check_index_consistency():
     """ChromaDB와 BM25 인덱스 정합성 검사"""
@@ -12,7 +13,7 @@ def check_index_consistency():
 
     # 2. BM25 인덱스 문서 수 확인
     try:
-        with open("bm25_index.pkl", "rb") as f:
+        with open(get_bm25_path(), "rb") as f:
             data = pickle.load(f)
         bm25_count = len(data["documents"])
         print(f"BM25 문서 수: {bm25_count}개")

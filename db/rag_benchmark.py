@@ -1,6 +1,7 @@
 import time
 import chromadb
 import pickle
+from config_loader import get_bm25_path
 
 client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection(name="memory")
@@ -9,7 +10,7 @@ def tokenize(text):
     return text.split()
 
 def load_bm25():
-    with open("bm25_index.pkl", "rb") as f:
+    with open(get_bm25_path(), "rb") as f:
         return pickle.load(f)
 
 def benchmark_chromadb(query: str, runs: int = 10):

@@ -15,6 +15,9 @@ memory:
     conversation: 30
     email: 7
     routine: 90
+paths:
+  bm25_index: bm25_index.pkl
+  chroma_db: ./chroma_db
 security:
   max_tokens: 28000
   similarity_threshold: 0.9

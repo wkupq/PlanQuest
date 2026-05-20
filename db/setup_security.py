@@ -58,6 +58,10 @@ def create_config():
         "backup": {
             "dir": BACKUP_DIR,
             "interval_days": 7
+        },
+        "paths": {
+        "bm25_index": "bm25_index.pkl",
+        "chroma_db": "./chroma_db"
         }
     }
 

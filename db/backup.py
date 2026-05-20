@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 import base64
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from config_loader import get_bm25_path
 
 APP_NAME = "ai_assistant"
 BACKUP_DIR = "backups"
@@ -13,7 +14,7 @@ BACKUP_DIR = "backups"
 # 백업할 파일/폴더 목록
 BACKUP_TARGETS = [
     "assistant.db",
-    "bm25_index.pkl",
+    get_bm25_path(),
     "config.yaml"
 ]
 

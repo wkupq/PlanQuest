@@ -3,6 +3,7 @@ import chromadb
 import pickle
 import os
 from typing import Optional
+from config_loader import get_bm25_path
 
 DB_PATH = "assistant.db"
 
@@ -24,10 +25,10 @@ def safe_load_bm25() -> Optional[dict]:
     파일 없으면 None 반환
     """
     try:
-        if not os.path.exists("bm25_index.pkl"):
+        if not os.path.exists(get_bm25_path()):
             print("BM25 인덱스 파일 없음 -> indexer.py 실행 필요")
             return None
-        with open("bm25_index.pkl", "rb") as f:
+        with open(get_bm25_path(), "rb") as f:
             return pickle.load(f)
     except Exception as e:
         print(f"BM25 로드 실패: {e}")
