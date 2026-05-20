@@ -25,7 +25,15 @@ if _PROJECT_FILES not in sys.path:
     sys.path.insert(0, _PROJECT_FILES)
 
 from database import SessionLocal
-from models import GoogleCalendarEvent, GmailMessage
+
+# GoogleCalendarEvent, GmailMessage 모델이 없으면 비활성화
+try:
+    from models import GoogleCalendarEvent, GmailMessage
+    _GOOGLE_MODELS_AVAILABLE = True
+except ImportError:
+    GoogleCalendarEvent = None
+    GmailMessage = None
+    _GOOGLE_MODELS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -108,6 +116,10 @@ def sync_calendar(db: Session) -> int:
     Google Calendar에서 오늘~7일 이벤트를 DB에 upsert.
     반환값: 동기화된 이벤트 수
     """
+    if not _GOOGLE_MODELS_AVAILABLE:
+        logger.debug("GoogleCalendarEvent 모델 없음 — Calendar 동기화 건너뜀")
+        return 0
+
     creds = _get_credentials()
     if not creds:
         return 0
@@ -263,6 +275,10 @@ def sync_gmail(db: Session) -> int:
     - 이후 실행: 변경 내역(신규 메일)만 DB에 저장
     반환값: 동기화된 메시지 수
     """
+    if not _GOOGLE_MODELS_AVAILABLE:
+        logger.debug("GmailMessage 모델 없음 — Gmail 동기화 건너뜀")
+        return 0
+
     creds = _get_credentials()
     if not creds:
         return 0

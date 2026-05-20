@@ -35,7 +35,13 @@ logging.basicConfig(
 
 # ── 기본 프롬프트 템플릿 ─────────────────────────────────────
 # $context, $question 두 변수를 사용
-_DEFAULT_SYSTEM = "당신은 사용자의 개인 비서 AI입니다. 주어진 컨텍스트를 바탕으로 정확하고 간결하게 답변하세요."
+_DEFAULT_SYSTEM = (
+    "You are a Korean AI scheduler assistant. "
+    "ALWAYS respond in Korean only. "
+    "NEVER use Chinese characters. "
+    "NEVER show your thinking or reasoning process. "
+    "Output only the final answer in Korean."
+)
 
 _DEFAULT_PROMPT_TMPL = Template(
     "다음 참고 문서를 바탕으로 질문에 답하세요.\n\n"
@@ -164,6 +170,7 @@ class RAGChain:
                             continue
                         token = data.get("response", "")
                         if token:
+                            # 중국어 필터링은 chat.py token_stream에서 처리
                             loop.call_soon_threadsafe(token_queue.put_nowait, token)
                         if data.get("done", False):
                             break

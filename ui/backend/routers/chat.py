@@ -1,6 +1,7 @@
 """chat.py — AI 챗봇 라우터 (RAGChain + 일정 + Google 컨텍스트 주입)"""
 import sys
 import os
+import re as _re
 import asyncio
 import json as _json
 import subprocess
@@ -15,7 +16,7 @@ from models import Habit, UserProfile
 
 # project-files 경로 추가
 PROJECT_FILES_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../../../project-files")
+    os.path.join(os.path.dirname(__file__), "../../../project-files")
 )
 if PROJECT_FILES_PATH not in sys.path:
     sys.path.insert(0, PROJECT_FILES_PATH)
@@ -100,6 +101,34 @@ except Exception as e:
     _chain = None
     _ai_available = False
     print(f"[WARN] RAGChain 로드 실패 — AI 비활성화: {e}")
+
+# ── 한국어 전용 응답 필터 ─────────────────────────────────────
+# CJK 통합 한자(U+4E00–U+9FFF), CJK 확장A(U+3400–U+4DBF) 제거
+# 한글(U+AC00–U+D7A3), 한글 자모(U+1100–U+11FF) 는 보존
+_CJK_RE = _re.compile(
+    '['
+    '一-鿿'   # CJK 통합 한자
+    '㐀-䶿'   # CJK 확장 A
+    ' 0-⩭f' # CJK 확장 B (surrogate)
+    '　-〿'   # CJK 기호·문장부호
+    '＀-￯'   # 전각 로마자 / 반각 가타카나
+    '⺀-⻿'   # CJK 부수 보충
+    '㇀-㇯'   # CJK 획
+    ']+',
+    _re.UNICODE
+)
+
+def _clean_korean(text: str) -> str:
+    """
+    응답을 한국어 전용으로 정리한다.
+    1. CJK(중국어/일본어) 문자 제거
+    2. 제거로 생긴 연속 공백 정리
+    3. 앞뒤 공백 제거
+    """
+    cleaned = _CJK_RE.sub('', text)
+    cleaned = _re.sub(r'  +', ' ', cleaned)   # 연속 공백 → 단일 공백
+    return cleaned.strip()
+
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -207,17 +236,24 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
             context_parts.append(google_ctx)
         full_context = "\n\n".join(context_parts)
 
-        full_prompt = (
-            f"당신은 사용자의 개인 AI 스케줄러 비서입니다. "
-            f"아래 사용자의 실제 일정 데이터를 참고하여 질문에 답하세요.\n\n"
-            f"{full_context}\n\n"
-            f"사용자 질문: {req.message}"
-        )
-
-        reply = _chain.ask(full_prompt)
+        full_prompt = _build_prompt_korean(req.message, full_context)
+        reply = _clean_korean(_chain.ask(full_prompt))
         return ChatResponse(reply=reply, ai_available=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 오류: {str(e)}")
+
+
+def _build_prompt_korean(message: str, full_context: str) -> str:
+    """한국어 전용 프롬프트 빌더"""
+    return (
+        "당신은 한국어로만 대화하는 AI 스케줄러 비서입니다.\n"
+        "규칙: 반드시 한국어로만 답하세요. 중국어·영어 사용 금지.\n"
+        "생각 과정을 출력하지 말고 최종 답변만 출력하세요.\n"
+        "단어 사이에 띄어쓰기를 반드시 지키세요.\n\n"
+        f"[사용자 일정 데이터]\n{full_context}\n\n"
+        f"[질문] {message}\n"
+        "[답변]"
+    )
 
 
 def _build_full_prompt(message: str, db: Session) -> str:
@@ -228,12 +264,7 @@ def _build_full_prompt(message: str, db: Session) -> str:
     if google_ctx:
         context_parts.append(google_ctx)
     full_context = "\n\n".join(context_parts)
-    return (
-        f"당신은 사용자의 개인 AI 스케줄러 비서입니다. "
-        f"아래 사용자의 실제 일정 데이터를 참고하여 질문에 답하세요.\n\n"
-        f"{full_context}\n\n"
-        f"사용자 질문: {message}"
-    )
+    return _build_prompt_korean(message, full_context)
 
 
 @router.post("/stream")
@@ -257,22 +288,25 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
 
     async def token_stream():
         try:
-            # RAGChain.ask_stream() 이 있으면 스트리밍, 없으면 전체 응답을 한 번에 전송
             if hasattr(_chain, "ask_stream"):
+                # 스트리밍 모드: 토큰마다 CJK 제거 후 전송
                 async for token in _chain.ask_stream(full_prompt):
-                    payload = _json.dumps({"token": token, "done": False}, ensure_ascii=False)
-                    yield f"data: {payload}\n\n"
-                    await asyncio.sleep(0)  # 이벤트 루프 양보
+                    clean = _clean_korean(token)
+                    if clean:
+                        payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
+                        yield f"data: {payload}\n\n"
+                    await asyncio.sleep(0)
             else:
-                # 폴백: 동기 ask() 결과를 단어 단위로 분할해서 흘려보냄
+                # 폴백: 전체 응답 한 번에 받아서 정리 후 전송
                 loop = asyncio.get_event_loop()
                 reply = await loop.run_in_executor(None, _chain.ask, full_prompt)
+                reply = _clean_korean(reply)
                 for word in reply.split(" "):
-                    payload = _json.dumps({"token": word + " ", "done": False}, ensure_ascii=False)
-                    yield f"data: {payload}\n\n"
+                    if word:
+                        payload = _json.dumps({"token": word + " ", "done": False}, ensure_ascii=False)
+                        yield f"data: {payload}\n\n"
                     await asyncio.sleep(0.02)
 
-            # 스트림 종료 신호
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
 
         except Exception as e:

@@ -5,6 +5,7 @@ export default function ChatDashboard({ onClose }) {
     { id: 1, type: 'bot', text: '안녕하세요! 🤖 AI 비서입니다. 무엇을 도와드릴까요?' },
   ]);
   const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -13,29 +14,66 @@ export default function ChatDashboard({ onClose }) {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
 
-    // 사용자 메시지 추가
     const userMsg = { id: Date.now(), type: 'user', text: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
+    setIsLoading(true);
 
-    // 봇 응답 시뮬레이션 (실제로는 FastAPI AI 에이전트에 연결)
-    setTimeout(() => {
-      const responses = [
-        '네, 이해했습니다! 📝',
-        '좋은 일정을 실천하고 있네요! 👍',
-        '계속 화이팅하세요! 💪',
-        '오늘도 멋진 하루 되세요! ✨',
-      ];
-      const botMsg = {
-        id: Date.now() + 1,
-        type: 'bot',
-        text: responses[Math.floor(Math.random() * responses.length)],
-      };
-      setMessages((prev) => [...prev, botMsg]);
-    }, 500);
+    // 스트리밍 봇 메시지 자리 미리 추가
+    const botId = Date.now() + 1;
+    setMessages((prev) => [...prev, { id: botId, type: 'bot', text: '' }]);
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg.text }),
+      });
+
+      if (!res.ok) throw new Error(`서버 오류: ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 마지막 불완전한 줄 보관
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          try {
+            const data = JSON.parse(line.slice(5).trim());
+            if (data.error) throw new Error(data.error);
+            if (data.token) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === botId ? { ...m, text: m.text + data.token } : m
+                )
+              );
+            }
+            if (data.done) break;
+          } catch (_) {}
+        }
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === botId
+            ? { ...m, text: `오류가 발생했어요: ${err.message}` }
+            : m
+        )
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -94,15 +132,16 @@ export default function ChatDashboard({ onClose }) {
               padding: '10px 16px',
               borderRadius: '10px',
               border: 'none',
-              background: '#5D8A5D',
+              background: isLoading ? '#9AB89A' : '#5D8A5D',
               color: 'white',
-              cursor: 'pointer',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
               fontWeight: '500',
               fontSize: '14px',
             }}
             onClick={handleSend}
+            disabled={isLoading}
           >
-            전송
+            {isLoading ? '⏳' : '전송'}
           </button>
         </div>
 
