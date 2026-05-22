@@ -51,6 +51,8 @@ def _extract_gmail_keywords(user_message: str) -> str:
         "보여줘", "알려줘", "확인해줘", "해줘", "찾아줘", "검색해줘",
         "7일간", "7일동안", "오늘", "최근", "관련", "뭐", "어떤",
         "몇", "개", "건", "있습니다", "없습니다", "주세요", "해주세요",
+        "뭔데", "뭐야", "뭔가요", "알려", "알고", "싶어", "궁금",
+        "어디", "어때", "어떻게", "좀", "제발", "혹시", "그거",
     }
 
     tokens = user_message.strip().split()
@@ -75,7 +77,8 @@ def _extract_gmail_keywords(user_message: str) -> str:
         # 스케줄 의도: Gmail에서 일정 관련 메일 검색
         return "일정 OR 약속 OR 미팅 OR 회의 OR 예약 OR 초대"
 
-    return " ".join(keywords) if keywords else ""
+    # 키워드들을 OR로 연결 → 하나라도 포함된 메일 검색 (AND보다 훨씬 넓게 검색)
+    return " OR ".join(keywords) if keywords else ""
 
 
 def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set) -> list:
@@ -158,7 +161,7 @@ def _try_get_google_context(user_query: str = "") -> str:
             if user_query:
                 keywords = _extract_gmail_keywords(user_query)
                 if keywords:
-                    keyword_results = _fetch_gmail_messages(gmail, keywords, 10, seen_ids)
+                    keyword_results = _fetch_gmail_messages(gmail, keywords, 20, seen_ids)
                     lines.append("")
                     lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
                     if keyword_results:
