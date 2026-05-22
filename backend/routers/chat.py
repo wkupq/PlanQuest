@@ -299,6 +299,16 @@ class ChatResponse(BaseModel):
     ai_available: bool
 
 
+def _build_context(message: str, db: Session) -> str:
+    """일정 DB + Gmail 컨텍스트를 조합해 반환 (프롬프트와 분리)"""
+    schedule_ctx = build_schedule_context(db)
+    google_ctx = _try_get_google_context(user_query=message)
+    parts = [schedule_ctx]
+    if google_ctx:
+        parts.append(google_ctx)
+    return "\n\n".join(parts)
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     if not req.message.strip():
@@ -311,44 +321,12 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         )
 
     try:
-        # 1. 앱 내 습관/일정 컨텍스트
-        schedule_ctx = build_schedule_context(db)
-
-        # 2. Google Calendar + Gmail 컨텍스트 (인증된 경우에만, 키워드 검색 포함)
-        google_ctx = _try_get_google_context(user_query=req.message)
-
-        # 3. 전체 컨텍스트 조합
-        context_parts = [schedule_ctx]
-        if google_ctx:
-            context_parts.append(google_ctx)
-        full_context = "\n\n".join(context_parts)
-
-        full_prompt = _build_prompt_korean(req.message, full_context)
-        reply = _clean_korean(_chain.ask(full_prompt))
+        # 메시지와 컨텍스트를 분리해서 전달 — rag_chain이 올바르게 조합
+        context = _build_context(req.message, db)
+        reply = _clean_korean(_chain.ask(req.message, extra_context=context))
         return ChatResponse(reply=reply, ai_available=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 오류: {str(e)}")
-
-
-def _build_prompt_korean(message: str, full_context: str) -> str:
-    """한국어 전용 프롬프트 빌더 — rag_chain이 system 프롬프트를 별도로 주입하므로 여기선 컨텍스트+질문만 구성"""
-    return (
-        f"[사용자 일정 및 Gmail 데이터]\n{full_context}\n\n"
-        f"[질문] {message}\n"
-        "[답변]"
-    )
-
-
-def _build_full_prompt(message: str, db: Session) -> str:
-    """공통 프롬프트 빌더 — 일반 응답과 스트리밍 모두 사용"""
-    schedule_ctx = build_schedule_context(db)
-    # 사용자 메시지를 키워드 검색에 활용
-    google_ctx = _try_get_google_context(user_query=message)
-    context_parts = [schedule_ctx]
-    if google_ctx:
-        context_parts.append(google_ctx)
-    full_context = "\n\n".join(context_parts)
-    return _build_prompt_korean(message, full_context)
 
 
 @router.post("/stream")
@@ -365,19 +343,22 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    # 프롬프트는 동기적으로 미리 빌드 (DB 세션 유효 시점에)
+    # 컨텍스트는 동기적으로 미리 빌드 (DB 세션 유효 시점에)
     try:
-        full_prompt = _build_full_prompt(req.message, db)
+        context = _build_context(req.message, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"컨텍스트 빌드 오류: {str(e)}")
+
+    # 실제 사용자 메시지와 컨텍스트를 분리해서 rag_chain에 전달
+    user_message = req.message
 
     async def token_stream():
         try:
             sent_any = False  # 실제로 사용자에게 보낸 토큰이 있는지 추적
 
             if hasattr(_chain, "ask_stream"):
-                # 스트리밍 모드: 토큰마다 CJK 제거 후 전송
-                async for token in _chain.ask_stream(full_prompt):
+                # 스트리밍 모드: 메시지와 컨텍스트 분리 전달
+                async for token in _chain.ask_stream(user_message, extra_context=context):
                     clean = _clean_korean(token)
                     if clean:
                         sent_any = True
@@ -387,7 +368,7 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             else:
                 # 폴백: 전체 응답 한 번에 받아서 정리 후 전송
                 loop = asyncio.get_event_loop()
-                reply = await loop.run_in_executor(None, _chain.ask, full_prompt)
+                reply = await loop.run_in_executor(None, _chain.ask, user_message, 5, 120, context)
                 reply = _clean_korean(reply)
                 for word in reply.split(" "):
                     if word:
