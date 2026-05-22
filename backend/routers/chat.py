@@ -126,7 +126,7 @@ def _clean_korean(text: str) -> str:
     3. 앞뒤 공백 제거
     4. 정리 후 빈 문자열이면 원본 반환 (모델이 중국어로만 응답했을 때 폴백)
     """
-    cleaned = _CJK_RE.sub('', text)
+    cleaned = _CJK_RE.sub(' ', text)   # 빈 문자열 대신 공백으로 치환 → 단어 붙음 방지
     cleaned = _re.sub(r'  +', ' ', cleaned).strip()
     # 필터링 결과가 비어 있으면 원본 그대로 반환 — 빈 버블 방지
     return cleaned if cleaned else text.strip()
