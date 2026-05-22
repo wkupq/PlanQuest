@@ -9,7 +9,7 @@
     "axios": "^1.6.2"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "node scripts/start-dev.js",
     "build": "react-scripts build"
   },
   "proxy": "http://127.0.0.1:8000",
