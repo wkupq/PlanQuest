@@ -331,21 +331,11 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
 
 
 def _build_prompt_korean(message: str, full_context: str) -> str:
-    """한국어 전용 프롬프트 빌더"""
+    """한국어 전용 프롬프트 빌더 — rag_chain이 system 프롬프트를 별도로 주입하므로 여기선 컨텍스트+질문만 구성"""
     return (
-        "<|im_start|>system\n"
-        "당신은 한국어 전용 AI 스케줄러 비서입니다.\n"
-        "절대 규칙:\n"
-        "- 오직 한국어로만 답하세요.\n"
-        "- 중국어(한자), 일본어, 영어를 절대 사용하지 마세요.\n"
-        "- 내부 생각(思考/thinking) 과정을 출력하지 마세요. 최종 답변만 출력하세요.\n"
-        "- 단어 사이 띄어쓰기를 지키세요.\n"
-        "<|im_end|>\n"
-        "<|im_start|>user\n"
-        f"[사용자 일정 데이터]\n{full_context}\n\n"
+        f"[사용자 일정 및 Gmail 데이터]\n{full_context}\n\n"
         f"[질문] {message}\n"
-        "<|im_end|>\n"
-        "<|im_start|>assistant\n"
+        "[답변]"
     )
 
 

@@ -36,11 +36,14 @@ logging.basicConfig(
 # ── 기본 프롬프트 템플릿 ─────────────────────────────────────
 # $context, $question 두 변수를 사용
 _DEFAULT_SYSTEM = (
-    "You are a Korean AI scheduler assistant. "
-    "ALWAYS respond in Korean only. "
-    "NEVER use Chinese characters. "
-    "NEVER show your thinking or reasoning process. "
-    "Output only the final answer in Korean."
+    "당신은 한국어 전용 AI 스케줄러 비서입니다.\n"
+    "절대 규칙:\n"
+    "1. 반드시 한국어로만 답변하세요.\n"
+    "2. 중국어(한자), 일본어를 절대 사용하지 마세요.\n"
+    "3. 내부 생각(thinking/reasoning) 과정을 출력하지 마세요. 최종 답변만 출력하세요.\n"
+    "4. 단어 사이 띄어쓰기를 반드시 지키세요.\n"
+    "5. 제공된 [사용자 일정 및 Gmail 데이터]를 반드시 참고해서 답변하세요.\n"
+    "6. 데이터에 없는 내용은 '해당 정보가 없습니다'라고 명확히 말하세요."
 )
 
 _DEFAULT_PROMPT_TMPL = Template(
@@ -140,6 +143,7 @@ class RAGChain:
             "prompt":     prompt,
             "stream":     True,
             "keep_alive": mgr.keep_alive,
+            "think":      False,   # qwen3.5 thinking 모드 비활성화 — 빠른 응답
             "options": {
                 "temperature": self.temperature,
                 "num_predict": self.max_tokens,
