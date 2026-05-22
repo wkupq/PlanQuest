@@ -430,7 +430,7 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     )
 
 
-TARGET_MODEL = "qwen2.5:7b"
+TARGET_MODEL = "qwen3.5:9b"
 
 @router.get("/health")
 async def chat_health():
@@ -508,7 +508,7 @@ async def setup_ollama():
         error_msg = str(e)
 
     if success:
-        # 2. qwen2.5:14b 모델이 있는지 확인 (pull은 시간이 오래 걸리므로 안내만)
+        # 2. qwen3.5:14b 모델이 있는지 확인 (pull은 시간이 오래 걸리므로 안내만)
         try:
             result = subprocess.run(
                 ["ollama", "list"],
@@ -516,13 +516,13 @@ async def setup_ollama():
                 text=True,
                 timeout=5,
             )
-            if "qwen2.5" in result.stdout.lower():
-                steps.append({"step": "model_check", "status": "ok", "message": "qwen2.5 모델이 이미 설치되어 있습니다."})
+            if "qwen3.5" in result.stdout.lower():
+                steps.append({"step": "model_check", "status": "ok", "message": "qwen3.5 모델이 이미 설치되어 있습니다."})
             else:
                 steps.append({
                     "step": "model_check",
                     "status": "warning",
-                    "message": "qwen2.5:14b 모델이 없습니다. 터미널에서 'ollama pull qwen2.5:14b' 를 실행하세요.",
+                    "message": "qwen3.5:14b 모델이 없습니다. 터미널에서 'ollama pull qwen3.5:14b' 를 실행하세요.",
                 })
         except Exception as e:
             steps.append({"step": "model_check", "status": "error", "message": str(e)})
