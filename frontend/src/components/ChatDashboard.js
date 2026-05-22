@@ -2,28 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
 const STORAGE_KEY = 'planquest_chat_history';
-const MAX_STORED_MESSAGES = 100;
+const WELCOME_MSG = { id: 1, type: 'bot', text: '안녕하세요! 🤖 AI 비서입니다. 무엇을 도와드릴까요?' };
 
-const INITIAL_MESSAGE = { id: 1, type: 'bot', text: '안녕하세요! 🤖 AI 비서입니다. 무엇을 도와드릴까요?' };
-
+/** localStorage에서 채팅 내역 불러오기 */
 function loadMessages() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.map((m) => ({ ...m, streaming: false }));
-    }
-  } catch {}
-  return [INITIAL_MESSAGE];
-}
-
-function saveMessages(messages) {
-  try {
-    const toSave = messages
-      .filter((m) => !m.streaming)
-      .slice(-MAX_STORED_MESSAGES);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch {}
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [WELCOME_MSG];
+    const parsed = JSON.parse(raw);
+    // 스트리밍 중 저장된 메시지는 streaming 플래그 제거
+    return parsed.map((m) => ({ ...m, streaming: false }));
+  } catch {
+    return [WELCOME_MSG];
+  }
 }
 
 export default function ChatDashboard({ onClose }) {
@@ -40,9 +31,14 @@ export default function ChatDashboard({ onClose }) {
 
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // 메시지 변경 시 localStorage에 저장
+  // 메시지 변경 시 localStorage에 저장 (스트리밍 완료된 것만)
   useEffect(() => {
-    saveMessages(messages);
+    const toSave = messages.filter((m) => !m.streaming);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    } catch {
+      // 스토리지 용량 초과 등 — 조용히 무시
+    }
   }, [messages]);
 
   // Ollama 상태 확인
@@ -156,10 +152,9 @@ export default function ChatDashboard({ onClose }) {
   };
 
   const handleClearHistory = () => {
-    if (window.confirm('대화 기록을 모두 지울까요?')) {
-      localStorage.removeItem(STORAGE_KEY);
-      setMessages([INITIAL_MESSAGE]);
-    }
+    if (!window.confirm('채팅 내역을 모두 삭제할까요?')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    setMessages([WELCOME_MSG]);
   };
 
   return (
@@ -167,7 +162,18 @@ export default function ChatDashboard({ onClose }) {
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>🤖 AI 비서 채팅</span>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleClearHistory}
+              title="채팅 내역 삭제"
+              style={{
+                fontSize: '11px', padding: '3px 8px', borderRadius: '10px',
+                background: '#f0f0f0', color: '#666', border: '1px solid #ccc',
+                cursor: 'pointer',
+              }}
+            >
+              🗑 내역 삭제
+            </button>
             <span style={{
               fontSize: '11px',
               padding: '3px 8px',
@@ -177,16 +183,6 @@ export default function ChatDashboard({ onClose }) {
             }}>
               {ollamaStatus === null ? '확인 중...' : ollamaStatus ? '🟢 Ollama 연결됨' : '🔴 Ollama 미연결'}
             </span>
-            <button
-              onClick={handleClearHistory}
-              title="대화 기록 초기화"
-              style={{
-                background: 'none', border: '1px solid #ccc', borderRadius: '6px',
-                padding: '2px 8px', fontSize: '11px', cursor: 'pointer', color: '#888',
-              }}
-            >
-              🗑️ 초기화
-            </button>
           </div>
         </div>
 
