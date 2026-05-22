@@ -1,11 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 const API_BASE = 'http://127.0.0.1:8000/api';
+const STORAGE_KEY = 'planquest_chat_history';
+const MAX_STORED_MESSAGES = 100;
+
+const INITIAL_MESSAGE = { id: 1, type: 'bot', text: '안녕하세요! 🤖 AI 비서입니다. 무엇을 도와드릴까요?' };
+
+function loadMessages() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map((m) => ({ ...m, streaming: false }));
+    }
+  } catch {}
+  return [INITIAL_MESSAGE];
+}
+
+function saveMessages(messages) {
+  try {
+    const toSave = messages
+      .filter((m) => !m.streaming)
+      .slice(-MAX_STORED_MESSAGES);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch {}
+}
 
 export default function ChatDashboard({ onClose }) {
-  const [messages, setMessages] = useState([
-    { id: 1, type: 'bot', text: '안녕하세요! 🤖 AI 비서입니다. 무엇을 도와드릴까요?' },
-  ]);
+  const [messages, setMessages] = useState(loadMessages);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState(null); // null | true | false
@@ -17,6 +39,11 @@ export default function ChatDashboard({ onClose }) {
   };
 
   useEffect(() => { scrollToBottom(); }, [messages]);
+
+  // 메시지 변경 시 localStorage에 저장
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
 
   // Ollama 상태 확인
   useEffect(() => {
@@ -128,20 +155,39 @@ export default function ChatDashboard({ onClose }) {
     }
   };
 
+  const handleClearHistory = () => {
+    if (window.confirm('대화 기록을 모두 지울까요?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      setMessages([INITIAL_MESSAGE]);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>🤖 AI 비서 채팅</span>
-          <span style={{
-            fontSize: '11px',
-            padding: '3px 8px',
-            borderRadius: '10px',
-            background: ollamaStatus ? '#d4edda' : '#f8d7da',
-            color: ollamaStatus ? '#155724' : '#721c24',
-          }}>
-            {ollamaStatus === null ? '확인 중...' : ollamaStatus ? '🟢 Ollama 연결됨' : '🔴 Ollama 미연결'}
-          </span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{
+              fontSize: '11px',
+              padding: '3px 8px',
+              borderRadius: '10px',
+              background: ollamaStatus ? '#d4edda' : '#f8d7da',
+              color: ollamaStatus ? '#155724' : '#721c24',
+            }}>
+              {ollamaStatus === null ? '확인 중...' : ollamaStatus ? '🟢 Ollama 연결됨' : '🔴 Ollama 미연결'}
+            </span>
+            <button
+              onClick={handleClearHistory}
+              title="대화 기록 초기화"
+              style={{
+                background: 'none', border: '1px solid #ccc', borderRadius: '6px',
+                padding: '2px 8px', fontSize: '11px', cursor: 'pointer', color: '#888',
+              }}
+            >
+              🗑️ 초기화
+            </button>
+          </div>
         </div>
 
         {/* Ollama 미연결 안내 */}
