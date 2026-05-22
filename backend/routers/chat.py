@@ -27,22 +27,55 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
+_SCHEDULE_INTENTS = [
+    "일정", "약속", "미팅", "회의", "예약", "등록", "추가", "넣어",
+    "스케줄", "날짜", "시간", "장소", "초대", "참석",
+]
+
 def _extract_gmail_keywords(user_message: str) -> str:
-    """사용자 메시지에서 Gmail 검색용 키워드 추출 (한국어 조사/불용어 제거)"""
-    # 자주 쓰는 질문 패턴 제거
-    stopwords = [
+    """
+    사용자 메시지에서 Gmail 검색용 키워드를 추출한다.
+    - 공백 기준으로 토큰 분리 → 한국어 조사 접미사 제거 → 불용어 스킵
+    - '일정에 넣어야 할' 류 스케줄 질문은 schedule 전용 키워드로 치환
+    """
+    # 공백 단위로 분리해서 각 토큰 끝의 조사/어미 제거
+    josa_suffixes = (
+        "에서", "에게", "한테", "로부터", "으로부터",
+        "에서는", "에서도", "에게는", "로서", "으로서",
+        "에게도", "한테서", "에도", "에는", "로도",
+        "에", "의", "은", "는", "이", "가", "을", "를",
+        "와", "과", "도", "로", "으로", "만", "도",
+    )
+    skip_words = {
         "메일", "이메일", "gmail", "있어", "있나요", "있나", "있어요",
         "보여줘", "알려줘", "확인해줘", "해줘", "찾아줘", "검색해줘",
-        "오늘", "7일동안", "최근", "관련", "에서", "에", "은", "는",
-        "이", "가", "을", "를", "의", "와", "과", "도", "로", "으로",
-        "뭐", "어떤", "몇", "개", "건",
-    ]
-    words = user_message.strip()
-    for sw in stopwords:
-        words = words.replace(sw, " ")
-    # 공백 정리 후 2글자 이상 단어만 유지
-    keywords = [w for w in words.split() if len(w) >= 2]
-    return " ".join(keywords)
+        "7일간", "7일동안", "오늘", "최근", "관련", "뭐", "어떤",
+        "몇", "개", "건", "있습니다", "없습니다", "주세요", "해주세요",
+    }
+
+    tokens = user_message.strip().split()
+    keywords = []
+    for tok in tokens:
+        # 조사 접미사 제거
+        word = tok
+        for sfx in sorted(josa_suffixes, key=len, reverse=True):
+            if word.endswith(sfx) and len(word) > len(sfx) + 1:
+                word = word[: -len(sfx)]
+                break
+        word = word.strip("?!.,~")
+        if len(word) < 2 or word in skip_words:
+            continue
+        keywords.append(word)
+
+    # 스케줄 관련 질문인지 감지
+    msg_lower = user_message
+    is_schedule_query = any(k in msg_lower for k in _SCHEDULE_INTENTS)
+
+    if is_schedule_query:
+        # 스케줄 의도: Gmail에서 일정 관련 메일 검색
+        return "일정 OR 약속 OR 미팅 OR 회의 OR 예약 OR 초대"
+
+    return " ".join(keywords) if keywords else ""
 
 
 def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set) -> list:
