@@ -160,4 +160,68 @@ export default function CalendarPanel({ onClose }) {
           <span>많음</span>
         </div>
 
-        {/* 선택한 날짜 디
+        {/* 선택한 날짜 디테일 */}
+        {selectedDate && dayData && (
+          <div className="cal-day-detail">
+            <div className="cal-day-detail-header">
+              📆 {selectedDate}
+              {selectedDate === todayStr && <span className="cal-today-badge">오늘</span>}
+            </div>
+
+            {dayData.scheduled.length === 0 && dayData.completed.length === 0 ? (
+              <div className="cal-day-empty">예정된 일정이 없는 날이에요</div>
+            ) : (
+              <>
+                {/* 예정된 일정 (오늘/미래) */}
+                {dayData.scheduled.length > 0 && (
+                  <div className="cal-section">
+                    <div className="cal-section-title">📋 예정 ({dayData.scheduled.length})</div>
+                    {dayData.scheduled.map((s) => (
+                      <div key={`s-${s.habit_id}`} className={`cal-task ${s.completed ? 'done' : ''}`}>
+                        <span className="cal-task-icon">{s.completed ? '✅' : '⏳'}</span>
+                        <span className="cal-task-title">{s.title}</span>
+                        <span className="cal-task-times">{(s.times || []).join(', ')}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 완료한 일정 (과거) — scheduled 에 없는 것만 별도 표시 */}
+                {dayData.completed.length > 0 && (
+                  <div className="cal-section">
+                    <div className="cal-section-title">✅ 완료 ({dayData.completed.length})</div>
+                    {dayData.completed.map((c, i) => (
+                      <div key={`c-${i}`} className="cal-task done">
+                        <span className="cal-task-icon">✅</span>
+                        <span className="cal-task-title">{c.title}</span>
+                        <span className="cal-task-times">{c.completed_at} · ❤️{c.hearts_earned}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 그날 받은 하트 */}
+                {dayData.total_hearts > 0 && (
+                  <div className="cal-day-hearts">
+                    💗 그날 받은 하트: <strong>{dayData.total_hearts}개</strong>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {loading && <div className="cal-loading">로딩 중...</div>}
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, highlight }) {
+  return (
+    <div className={`cal-stat ${highlight ? 'highlight' : ''}`}>
+      <div className="cal-stat-label">{label}</div>
+      <div className="cal-stat-value">{value}</div>
+    </div>
+  );
+}

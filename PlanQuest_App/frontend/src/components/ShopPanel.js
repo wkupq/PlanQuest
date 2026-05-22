@@ -96,4 +96,32 @@ export default function ShopPanel({ userHearts, userLevel, onClose, onRefresh, s
                       src={imgSrc}
                       alt={item.name}
                       className="shop-char-img"
-                      onError={(e) => { e.targe
+                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }}
+                    />
+                  ) : null}
+                  {/* 이미지 로드 실패 시 또는 이미지 없을 때 이모지 표시 */}
+                  <span
+                    className="emoji"
+                    style={{ display: (imgSrc && !locked) ? 'none' : 'block' }}
+                  >
+                    {item.emoji}
+                  </span>
+                </div>
+
+                <div className="name">{item.name}</div>
+                <div className="price">
+                  {item.owned ? '보유중' : `❤ ${item.price}`}
+                </div>
+                {locked && (
+                  <div style={{ fontSize: '9px', color: '#999' }}>Lv.{item.unlock_level}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <button className="cancel-btn" onClick={onClose} style={{ marginTop: '16px' }}>닫기</button>
+      </div>
+    </div>
+  );
+}

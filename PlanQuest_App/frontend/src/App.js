@@ -220,4 +220,65 @@ export default function App() {
       )}
 
       {/* Ollama 미설치/미실행 팝업 */}
-      {showOllamaPopup
+      {showOllamaPopup && ollamaStatus && (
+        <OllamaPopup
+          status={ollamaStatus}
+          onClose={() => setShowOllamaPopup(false)}
+          onRetry={() => { checkOllama(); }}
+        />
+      )}
+
+      {/* 씨앗/나무 클릭 정보 모달 */}
+      {selectedTree && (
+        <TreeInfoModal
+          tree={selectedTree}
+          onClose={() => setSelectedTree(null)}
+          onHarvested={handleTreeHarvested}
+          onDeleted={() => { setSelectedTree(null); refresh(); }}
+          onMove={(tree) => {
+            setMoveMode({ type: 'tree', id: tree.id, name: tree.habit_title });
+            setSelectedTree(null);
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 캐릭터 클릭 정보 모달 */}
+      {selectedChar && (
+        <CharacterInfoModal
+          placedItem={selectedChar}
+          onClose={() => setSelectedChar(null)}
+          onMove={(item) => {
+            // PlacedItem.id 로 정확하게 이동 (버그 수정)
+            setMoveMode({
+              type: 'character',
+              id: item.id,
+              name: item.item_name,
+            });
+            setSelectedChar(null);
+          }}
+          onRemoved={refresh}
+          onHarvested={(data) => {
+            showHeartAnim(window.innerWidth / 2, window.innerHeight / 2 - 50, data.harvested);
+            refresh();
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 토스트 */}
+      {toast && <Toast message={toast} />}
+
+      {/* 하트 애니메이션 */}
+      {heartAnims.map((a) => (
+        <div
+          key={a.id}
+          className="heart-earn-anim"
+          style={{ left: a.x, top: a.y }}
+        >
+          +{a.amount} &#10084;
+        </div>
+      ))}
+    </>
+  );
+}

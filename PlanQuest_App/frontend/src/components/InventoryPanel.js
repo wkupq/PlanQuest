@@ -113,4 +113,21 @@ export default function InventoryPanel({ onClose, onRefresh, showToast, onStartP
         )}
 
         {placementMode && (
-          
+          <div style={{
+            marginTop: '16px', padding: '12px', backgroundColor: '#FFF8DC',
+            border: '2px solid #FFD700', borderRadius: '8px', textAlign: 'center',
+            color: '#8B6914', fontWeight: 'bold'
+          }}>
+            🎯 배치 모드: {placementMode.name} {placementMode.emoji}
+            <br />
+            <span style={{ fontSize: '12px', color: '#B8956A', marginTop: '4px', display: 'block' }}>
+              지도에서 원하는 위치를 클릭하세요
+            </span>
+          </div>
+        )}
+
+        <button className="cancel-btn" onClick={onClose} style={{ marginTop: '16px' }}>닫기</button>
+      </div>
+    </div>
+  );
+}

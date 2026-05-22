@@ -24,4 +24,17 @@ export const buyItem = (id) => API.post(`/shop/${id}/buy`);
 
 // 배치
 export const getPlacedItems = () => API.get('/placed-items');
-export const placeItem = (data) => API.post('/placed-items',
+export const placeItem = (data) => API.post('/placed-items', data);
+export const removePlacedItem = (id) => API.delete(`/placed-items/${id}`);
+export const movePlacedItem = (id, grid_x, grid_y) =>
+  API.patch(`/placed-items/${id}/position`, { grid_x, grid_y });
+export const harvestPlacedItem = (id) =>
+  API.post(`/placed-items/${id}/harvest`);
+
+// 캘린더
+export const getCalendarMonth = (year, month) =>
+  API.get('/calendar/month', { params: { year, month } });
+export const getCalendarDay = (date) =>
+  API.get('/calendar/day', { params: { date } });
+
+export default API;
