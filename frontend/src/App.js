@@ -69,7 +69,8 @@ export default function App() {
       const res = await fetch('http://127.0.0.1:8000/api/chat/health');
       const data = await res.json();
       setOllamaStatus(data);
-      if (!data.ollama_installed || !data.ollama_running) {
+      // 설치 안 됐거나 서버 미실행이거나 모델이 없을 때만 팝업
+      if (!data.ollama_installed || !data.ollama_running || !data.model_loaded) {
         setShowOllamaPopup(true);
       }
     } catch {

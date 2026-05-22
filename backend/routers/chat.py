@@ -383,30 +383,47 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     )
 
 
+TARGET_MODEL = "qwen2.5:7b"
+
 @router.get("/health")
 async def chat_health():
     """Ollama 실행 상태 확인 — OllamaPopup.js 및 ChatDashboard.js가 사용"""
+    ollama_installed = False
     ollama_running = False
     model_loaded = False
     error_msg = None
 
+    # 1. Ollama 바이너리 설치 여부 확인
+    try:
+        result = subprocess.run(
+            ["ollama", "--version"],
+            capture_output=True, text=True, timeout=3,
+        )
+        ollama_installed = result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        ollama_installed = False
+
+    # 2. Ollama 서버 실행 여부 + 모델 목록 확인
     try:
         import httpx
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get("http://127.0.0.1:11434/api/tags")
             if resp.status_code == 200:
                 ollama_running = True
+                ollama_installed = True   # 실행 중이면 설치도 된 것
                 tags = resp.json().get("models", [])
-                # qwen2.5 계열 모델이 하나라도 있으면 model_loaded=True
                 model_loaded = any(
-                    "qwen" in m.get("name", "").lower() for m in tags
+                    TARGET_MODEL.split(":")[0] in m.get("name", "").lower()
+                    for m in tags
                 )
     except Exception as e:
         error_msg = str(e)
 
     return {
+        "ollama_installed": ollama_installed,
         "ollama_running": ollama_running,
         "model_loaded": model_loaded,
+        "model": TARGET_MODEL,
         "ai_available": _ai_available,
         "error": error_msg,
     }
