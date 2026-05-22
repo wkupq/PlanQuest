@@ -175,14 +175,34 @@ def _try_get_google_context(user_query: str = "") -> str:
 
         return "\n".join(lines)
 
-    except Exception:
-        # 토큰 없음 or 인증 안 됨 → 조용히 빈 문자열 반환
+    except Exception as e:
+        # 토큰 없음 or 인증 안 됨 → 로그 남기고 빈 문자열 반환
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Google 컨텍스트 로드 실패 (인증 필요): %s", e)
         return ""
 
 try:
     from rag_chain import RAGChain
-    _chain = RAGChain()
+    from string import Template as _Template
+
+    # Gmail·일정 데이터에 맞는 전용 프롬프트 템플릿
+    _CHAT_PROMPT_TMPL = _Template(
+        "[사용자 일정 및 Gmail 데이터]\n"
+        "$context\n\n"
+        "[질문] $question\n"
+        "[답변]"
+    )
+    _NO_DATA_TMPL = _Template(
+        "[질문] $question\n"
+        "[답변]"
+    )
+
+    _chain = RAGChain(
+        prompt_template=_CHAT_PROMPT_TMPL,
+        use_rag=False,   # RAG 문서 DB는 사용 안 함 — Gmail/일정만 사용
+    )
     _ai_available = True
+    print("[INFO] RAGChain 로드 성공")
 except Exception as e:
     _chain = None
     _ai_available = False
@@ -499,3 +519,22 @@ async def setup_ollama():
             steps.append({"step": "model_check", "status": "error", "message": str(e)})
 
     return {"success": success, "steps": steps, "error": error_msg}
+
+
+@router.get("/debug-context")
+async def debug_context(q: str = "skala 메일 있어?", db: Session = Depends(get_db)):
+    """실제 빌드되는 컨텍스트 확인용 (개발/디버그 전용)"""
+    schedule_ctx = build_schedule_context(db)
+    google_ctx = _try_get_google_context(user_query=q)
+    parts = [schedule_ctx]
+    if google_ctx:
+        parts.append(google_ctx)
+    full_context = "\n\n".join(parts)
+    return {
+        "query": q,
+        "schedule_ctx_len": len(schedule_ctx),
+        "google_ctx_len": len(google_ctx),
+        "google_ctx_present": bool(google_ctx),
+        "total_context_len": len(full_context),
+        "preview": full_context[:2000],  # 앞 2000자만 미리보기
+    }
