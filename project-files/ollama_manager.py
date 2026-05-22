@@ -39,8 +39,8 @@ logging.basicConfig(
 DEFAULT_BASE_URL   = "http://127.0.0.1:11434"
 DEFAULT_KEEP_ALIVE = "10m"          # Ollama keep_alive 파라미터
 WARMUP_PROMPT      = "ping"         # 웜업용 최소 프롬프트
-WARMUP_TIMEOUT     = 60             # 웜업 최대 대기(초)
-HEALTH_INTERVAL    = 30             # keep_alive 헬스체크 주기(초)
+WARMUP_TIMEOUT     = 120            # 웜업 최대 대기(초) — 9b 모델은 로딩이 오래 걸림
+HEALTH_INTERVAL    = 60             # keep_alive 헬스체크 주기(초)
 MAX_WORKERS        = 2              # 동시 추론 워커 수
 MAX_QUEUE_SIZE     = 50             # 큐 최대 적재량
 REQUEST_TIMEOUT    = 120            # 추론 HTTP 타임아웃(초)
@@ -292,7 +292,7 @@ class OllamaManager:
                         "keep_alive": self.keep_alive,
                         "options":    {"num_predict": 1},
                     },
-                    timeout=10,
+                    timeout=60,  # 9b 모델은 첫 응답에 시간이 걸림
                 )
                 logger.debug("keep_alive ping 완료")
             except requests.RequestException as exc:
