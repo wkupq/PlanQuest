@@ -171,15 +171,14 @@ _CJK_RE = _re.compile(
 def _clean_korean(text: str) -> str:
     """
     응답을 한국어 전용으로 정리한다.
-    1. CJK(중국어/일본어) 문자 제거
-    2. 제거로 생긴 연속 공백 정리
+    1. CJK(중국어/일본어) 문자를 공백으로 치환 → 인접 단어 붙음 방지
+    2. 연속 공백 정리
     3. 앞뒤 공백 제거
-    4. 정리 후 빈 문자열이면 원본 반환 (모델이 중국어로만 응답했을 때 폴백)
+    순수 중국어 토큰은 빈 문자열 반환 (호출부에서 스킵)
     """
-    cleaned = _CJK_RE.sub(' ', text)   # 빈 문자열 대신 공백으로 치환 → 단어 붙음 방지
+    cleaned = _CJK_RE.sub(' ', text)
     cleaned = _re.sub(r'  +', ' ', cleaned).strip()
-    # 필터링 결과가 비어 있으면 원본 그대로 반환 — 빈 버블 방지
-    return cleaned if cleaned else text.strip()
+    return cleaned
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -348,11 +347,14 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
 
     async def token_stream():
         try:
+            sent_any = False  # 실제로 사용자에게 보낸 토큰이 있는지 추적
+
             if hasattr(_chain, "ask_stream"):
                 # 스트리밍 모드: 토큰마다 CJK 제거 후 전송
                 async for token in _chain.ask_stream(full_prompt):
                     clean = _clean_korean(token)
                     if clean:
+                        sent_any = True
                         payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
                         yield f"data: {payload}\n\n"
                     await asyncio.sleep(0)
@@ -363,9 +365,18 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                 reply = _clean_korean(reply)
                 for word in reply.split(" "):
                     if word:
+                        sent_any = True
                         payload = _json.dumps({"token": word + " ", "done": False}, ensure_ascii=False)
                         yield f"data: {payload}\n\n"
                     await asyncio.sleep(0.02)
+
+            # 중국어로만 응답해서 아무것도 전달 못 했을 때 안내 메시지
+            if not sent_any:
+                fallback = _json.dumps(
+                    {"token": "죄송해요, 다시 한번 질문해 주시겠어요? 🙏", "done": False},
+                    ensure_ascii=False,
+                )
+                yield f"data: {fallback}\n\n"
 
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
 
