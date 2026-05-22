@@ -27,7 +27,52 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
-def _try_get_google_context() -> str:
+def _extract_gmail_keywords(user_message: str) -> str:
+    """사용자 메시지에서 Gmail 검색용 키워드 추출 (한국어 조사/불용어 제거)"""
+    # 자주 쓰는 질문 패턴 제거
+    stopwords = [
+        "메일", "이메일", "gmail", "있어", "있나요", "있나", "있어요",
+        "보여줘", "알려줘", "확인해줘", "해줘", "찾아줘", "검색해줘",
+        "오늘", "7일동안", "최근", "관련", "에서", "에", "은", "는",
+        "이", "가", "을", "를", "의", "와", "과", "도", "로", "으로",
+        "뭐", "어떤", "몇", "개", "건",
+    ]
+    words = user_message.strip()
+    for sw in stopwords:
+        words = words.replace(sw, " ")
+    # 공백 정리 후 2글자 이상 단어만 유지
+    keywords = [w for w in words.split() if len(w) >= 2]
+    return " ".join(keywords)
+
+
+def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set) -> list:
+    """Gmail API로 메시지 목록 가져오기. seen_ids로 중복 제거."""
+    try:
+        res = gmail_svc.users().messages().list(
+            userId="me", q=query, maxResults=max_results
+        ).execute()
+        messages = res.get("messages", [])
+        result = []
+        for m in messages:
+            if m["id"] in seen_ids:
+                continue
+            seen_ids.add(m["id"])
+            msg = gmail_svc.users().messages().get(
+                userId="me", id=m["id"],
+                format="metadata",
+                metadataHeaders=["Subject", "From", "Date"],
+            ).execute()
+            headers = msg["payload"]["headers"]
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(제목 없음)")
+            sender  = next((h["value"] for h in headers if h["name"] == "From"),    "(발신자 없음)")
+            date    = next((h["value"] for h in headers if h["name"] == "Date"),    "")
+            result.append({"subject": subject[:60], "sender": sender[:40], "date": date[:25]})
+        return result
+    except Exception:
+        return []
+
+
+def _try_get_google_context(user_query: str = "") -> str:
     """Google Calendar + Gmail에서 컨텍스트 가져오기. 실패 시 빈 문자열 반환."""
     try:
         from auth_manager import get_credentials
@@ -61,29 +106,34 @@ def _try_get_google_context() -> str:
         except Exception as cal_err:
             lines.append(f"=== Google 캘린더 로드 실패: {cal_err} ===")
 
-        # ── Gmail 최근 미확인 이메일 5건 ──
+        # ── Gmail: 최근 미확인 5건 + 키워드 검색 결과 ──
         try:
             gmail = build("gmail", "v1", credentials=creds)
-            results = gmail.users().messages().list(
-                userId="me", q="is:unread", maxResults=5
-            ).execute()
-            messages = results.get("messages", [])
+            seen_ids: set = set()
 
+            # 1) 최근 미확인 이메일 5건
+            unread = _fetch_gmail_messages(gmail, "is:unread", 5, seen_ids)
             lines.append("")
             lines.append("=== Gmail 최근 미확인 이메일 ===")
-            if messages:
-                for m in messages:
-                    msg = gmail.users().messages().get(
-                        userId="me", id=m["id"],
-                        format="metadata",
-                        metadataHeaders=["Subject", "From"],
-                    ).execute()
-                    headers = msg["payload"]["headers"]
-                    subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(제목 없음)")
-                    sender = next((h["value"] for h in headers if h["name"] == "From"), "(발신자 없음)")
-                    lines.append(f"- 보낸사람: {sender[:30]} | 제목: {subject[:50]}")
+            if unread:
+                for m in unread:
+                    lines.append(f"- [{m['date']}] 보낸사람: {m['sender']} | 제목: {m['subject']}")
             else:
                 lines.append("미확인 이메일 없음")
+
+            # 2) 사용자 질문 키워드로 추가 검색 (키워드가 있을 때만)
+            if user_query:
+                keywords = _extract_gmail_keywords(user_query)
+                if keywords:
+                    keyword_results = _fetch_gmail_messages(gmail, keywords, 10, seen_ids)
+                    lines.append("")
+                    lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
+                    if keyword_results:
+                        for m in keyword_results:
+                            lines.append(f"- [{m['date']}] 보낸사람: {m['sender']} | 제목: {m['subject']}")
+                    else:
+                        lines.append(f"'{keywords}' 관련 이메일 없음")
+
         except Exception as gmail_err:
             lines.append(f"=== Gmail 로드 실패: {gmail_err} ===")
 
@@ -229,8 +279,8 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         # 1. 앱 내 습관/일정 컨텍스트
         schedule_ctx = build_schedule_context(db)
 
-        # 2. Google Calendar + Gmail 컨텍스트 (인증된 경우에만)
-        google_ctx = _try_get_google_context()
+        # 2. Google Calendar + Gmail 컨텍스트 (인증된 경우에만, 키워드 검색 포함)
+        google_ctx = _try_get_google_context(user_query=req.message)
 
         # 3. 전체 컨텍스트 조합
         context_parts = [schedule_ctx]
@@ -267,7 +317,8 @@ def _build_prompt_korean(message: str, full_context: str) -> str:
 def _build_full_prompt(message: str, db: Session) -> str:
     """공통 프롬프트 빌더 — 일반 응답과 스트리밍 모두 사용"""
     schedule_ctx = build_schedule_context(db)
-    google_ctx = _try_get_google_context()
+    # 사용자 메시지를 키워드 검색에 활용
+    google_ctx = _try_get_google_context(user_query=message)
     context_parts = [schedule_ctx]
     if google_ctx:
         context_parts.append(google_ctx)
