@@ -91,7 +91,7 @@ class RAGChain:
         prompt_template: Template = _DEFAULT_PROMPT_TMPL,
         use_rag: bool = True,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
+        max_tokens: int = 4096,  # thinking 모드 비활성화 시 실제 응답 토큰 여유 확보
     ) -> None:
         self.rag              = rag or RAGPipeline()
         self._manager         = manager  # None이면 ask() 호출 시 get_manager() 사용

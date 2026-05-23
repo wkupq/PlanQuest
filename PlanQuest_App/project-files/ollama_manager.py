@@ -39,8 +39,8 @@ logging.basicConfig(
 DEFAULT_BASE_URL   = "http://127.0.0.1:11434"
 DEFAULT_KEEP_ALIVE = "10m"          # Ollama keep_alive 파라미터
 WARMUP_PROMPT      = "ping"         # 웜업용 최소 프롬프트
-WARMUP_TIMEOUT     = 60             # 웜업 최대 대기(초)
-HEALTH_INTERVAL    = 30             # keep_alive 헬스체크 주기(초)
+WARMUP_TIMEOUT     = 120            # 웜업 최대 대기(초) — 9b 모델은 로딩이 오래 걸림
+HEALTH_INTERVAL    = 60             # keep_alive 헬스체크 주기(초)
 MAX_WORKERS        = 2              # 동시 추론 워커 수
 MAX_QUEUE_SIZE     = 50             # 큐 최대 적재량
 REQUEST_TIMEOUT    = 120            # 추론 HTTP 타임아웃(초)
@@ -292,7 +292,7 @@ class OllamaManager:
                         "keep_alive": self.keep_alive,
                         "options":    {"num_predict": 1},
                     },
-                    timeout=10,
+                    timeout=60,  # 9b 모델은 첫 응답에 시간이 걸림
                 )
                 logger.debug("keep_alive ping 완료")
             except requests.RequestException as exc:
@@ -349,6 +349,7 @@ class OllamaManager:
             "prompt":     prompt,
             "stream":     False,
             "keep_alive": self.keep_alive,
+            "think":      False,   # qwen3.5 thinking 모드 비활성화 (응답이 빈 문자열이 되는 버그 방지)
             "options":    options,
         }
         if system:
@@ -363,9 +364,21 @@ class OllamaManager:
         data = resp.json()
 
         # 응답 구조: {"response": "...", "done": true, ...}
+        # thinking 모드가 켜진 경우: response가 비어있고 thinking에만 내용이 있음
+        # → think: False가 무시된 경우 대비 폴백 처리
         response_text = data.get("response", "")
         if not response_text:
-            raise ValueError(f"빈 응답 수신: {data}")
+            thinking = data.get("thinking", "")
+            done_reason = data.get("done_reason", "")
+            logger.error(
+                "빈 응답 수신 (done_reason=%s, thinking_len=%d) — think:False 파라미터가 무시됐을 수 있음",
+                done_reason, len(thinking),
+            )
+            raise ValueError(
+                f"Ollama가 빈 응답을 반환했습니다. "
+                f"done_reason={done_reason}, eval_count={data.get('eval_count')}. "
+                f"모델({self.model})의 thinking 모드 비활성화가 필요합니다."
+            )
 
         logger.debug(
             "추론 완료 — %d 토큰 생성 (eval_count=%s)",
