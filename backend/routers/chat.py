@@ -284,7 +284,8 @@ def _extract_gmail_keywords(user_message: str) -> str:
     - OR는 관련 없는 메일도 반환하므로 AND(공백) 방식 사용
     - 발신자 패턴('skala에서') → from: 연산자로 변환
     - 대괄호 안 주요 키워드 우선 추출 (메일 제목에 많음)
-    - 가장 길고 고유한 키워드 상위 3개만 사용
+    - 일정 생성 요청(추가해줘 등)은 Gmail 검색 불필요 → 빈 문자열 반환
+    - 가장 길고 고유한 키워드 상위 2개만 AND 검색
     """
     josa_suffixes = (
         "에서는", "에서도", "에게는", "로부터", "으로부터", "한테서",
@@ -301,33 +302,54 @@ def _extract_gmail_keywords(user_message: str) -> str:
         "어디", "어때", "어떻게", "좀", "제발", "혹시", "그거",
         "잘", "내용", "봐", "확인", "찾아봐", "확인해봐", "찾아",
         "관한", "대한", "관해", "대해", "결과", "발표",
+        "날짜", "시간", "언제", "일정", "추가", "등록", "넣어",
+        "추가해줘", "등록해줘", "넣어줘", "만들어줘", "추가해", "등록해",
     }
+
+    # 0) 일정 생성 요청은 Gmail 검색 불필요 (AI가 직접 __CREATE__ 태그 처리)
+    _strong_create = ("추가해줘", "등록해줘", "넣어줘", "만들어줘", "일정에 추가", "일정에 넣어")
+    if any(k in user_message for k in _strong_create):
+        return ""
 
     # 1) 대괄호 안 키워드 우선 추출 (예: "[SK주식회사(AX)] SKALA")
     bracket_words = _re.findall(r'\[([^\]]+)\]', user_message)
+    # 대괄호로 감싸진 원본 문자열 범위 — 중복 추출 방지용
+    bracket_spans = set()
+    for m in _re.finditer(r'\[[^\]]+\]', user_message):
+        bracket_spans.add(m.start())
+
     priority_keywords: list[str] = []
     for bw in bracket_words:
         # 소괄호도 분리 ("SK주식회사(AX)" → "SK주식회사", "AX")
         sub_tokens = _re.split(r'[\s()]+', bw)
         for tok in sub_tokens:
             tok = tok.strip(",.~[]")
-            if len(tok) >= 2 and tok not in skip_words:
+            if len(tok) >= 2 and tok.lower() not in skip_words:
                 priority_keywords.append(tok)
 
     # 2) 발신자 패턴 감지 (예: "skala에서 온 메일" → from:skala)
     from_parts: list[str] = []
+    sender_words: set[str] = set()  # from: 발신자 단어 → body_keywords에서 중복 제외
     msg_tokens = user_message.strip().split()
+
+    # 대괄호 포함 토큰은 이미 처리됐으므로 스킵
+    bracket_token_re = _re.compile(r'^\[')
+
     for tok in msg_tokens:
         for sfx in ("에서", "로부터", "한테서"):
             if tok.endswith(sfx) and len(tok) > len(sfx) + 1:
                 sender_word = tok[: -len(sfx)].strip("?!.,~[]()").lower()
                 if len(sender_word) >= 2 and sender_word not in skip_words:
                     from_parts.append(f"from:{sender_word}")
+                    sender_words.add(sender_word)
                 break
 
     # 3) 일반 토큰 키워드 추출 (조사 제거)
     keywords: list[str] = []
     for tok in msg_tokens:
+        # 대괄호로 시작하는 토큰은 이미 bracket 처리됨 → 스킵
+        if bracket_token_re.match(tok):
+            continue
         # 괄호·대괄호·특수문자 제거
         word = _re.sub(r'[\[\](){}]', '', tok).strip("?!.,~\"' ")
         # 조사 제거
@@ -336,7 +358,7 @@ def _extract_gmail_keywords(user_message: str) -> str:
                 word = word[: -len(sfx)]
                 break
         word = word.strip("?!.,~\"' ")
-        if len(word) < 2 or word in skip_words:
+        if len(word) < 2 or word.lower() in skip_words:
             continue
         # 영숫자+한글 혼합 토큰 처리 (예: "skct봐야하" → "skct")
         # 단, 한글 부분이 4자 이상이면 의미 있는 단어로 판단해 전체 유지
@@ -351,7 +373,8 @@ def _extract_gmail_keywords(user_message: str) -> str:
         keywords.append(word)
 
     # 4) 중복 제거 + 길이 내림차순 (긴 단어 = 더 구체적)
-    seen: set[str] = set()
+    #    - from: 발신자 단어는 body_keywords에서 제외 (중복 방지)
+    seen: set[str] = set(sender_words)  # 발신자 단어는 이미 from:으로 처리됨
     ordered: list[str] = []
     for w in priority_keywords + keywords:
         lw = w.lower()
@@ -360,14 +383,8 @@ def _extract_gmail_keywords(user_message: str) -> str:
             ordered.append(w)
     ordered.sort(key=len, reverse=True)
 
-    # 5) 일정 의도 감지 — 단, from: 파트나 고유 키워드가 있으면 이메일 검색 우선
-    #    "skala에서 skct 날짜 일정 추가해줘" → SKCT 이메일 찾아야 함
-    has_email_specifics = bool(from_parts) or bool(ordered)
-    if not has_email_specifics and any(k in user_message for k in _SCHEDULE_INTENTS):
-        return "일정 약속 미팅 회의"
-
-    # 6) from: 파트 있으면 앞에 붙이고, 나머지 키워드 상위 2개 AND
-    body_keywords = ordered[:2]  # 상위 2개 (AND 검색 = 공백 구분)
+    # 5) 결과 없으면 빈 문자열 (Gmail 검색 생략)
+    body_keywords = ordered[:2]  # 상위 2개 AND 검색
     parts = from_parts + body_keywords
     return " ".join(parts) if parts else ""
 
