@@ -135,25 +135,47 @@ except Exception as e:
 
 # ── 텍스트 정제 ───────────────────────────────────────────────────
 
+def _clean_token(token: str) -> str:
+    """
+    스트리밍 토큰 경량 정제 — 단어 간 공백 보존 (strip 없음).
+    마크다운·CJK만 제거하고 앞뒤 공백은 그대로 유지해야
+    프론트에서 토큰을 이어붙일 때 단어 사이가 붙지 않는다.
+    """
+    # 1) __CREATE__ 이후 제거
+    cleaned = _re.sub(r'__CREATE__[\s\S]*', '', token)
+    # 2) 마크다운 기호 제거
+    cleaned = _MD_RE.sub('', cleaned)
+    # 3) CJK → 공백
+    cleaned = _CJK_RE.sub(' ', cleaned)
+    # 4) 탭·연속 스페이스 → 단일 스페이스 (줄바꿈은 보존)
+    cleaned = _re.sub(r'[ \t]{2,}', ' ', cleaned)
+    # strip 하지 않음 — 토큰 앞뒤 공백이 단어 구분자 역할
+    return cleaned
+
+
 def _clean_korean(text: str) -> str:
     """
-    응답 텍스트 정제:
-    1. __CREATE__ 태그 제거 (스트리밍 중 노출 방지)
+    완성된 응답 전체 정제 (비스트리밍 · 일정 생성 경로).
+    1. __CREATE__ 태그 제거
     2. 마크다운 기호 제거
     3. CJK(중국어/일본어) 문자 → 공백
-    4. 줄바꿈 정규화 (가독성)
-    5. 연속 공백 정리
+    4. 파이프(|) 구분 메일 목록 → 줄바꿈으로 변환
+    5. 줄바꿈 정규화 (가독성)
+    6. 연속 공백 정리
     """
-    # 1) __CREATE__ 태그 및 이후 줄 제거 (비스트리밍 경로 보호)
+    # 1) __CREATE__ 태그 제거
     cleaned = _re.sub(r'__CREATE__[\s\S]*', '', text)
     # 2) 마크다운 기호 제거
     cleaned = _MD_RE.sub('', cleaned)
     # 3) CJK → 공백
     cleaned = _CJK_RE.sub(' ', cleaned)
-    # 4) 인라인 리스트 ".- " 패턴을 줄바꿈 리스트로 변환
+    # 4) "N번메일:" 또는 "|N번메일:" 패턴을 줄바꿈으로 변환 (메일 목록 가독성)
+    cleaned = _re.sub(r'\s*\|\s*(\d+번메일)', r'\n\1', cleaned)
+    cleaned = _re.sub(r'\s*\|\s*(\d+번)', r'\n\1', cleaned)
+    # 5) 인라인 리스트 ".- " 패턴 → 줄바꿈
     cleaned = _re.sub(r'\.\s*-\s+', '.\n- ', cleaned)
-    # 5) 연속 공백 → 단일 공백, 3줄 이상 빈 줄 → 2줄
-    cleaned = _re.sub(r'  +', ' ', cleaned)
+    # 6) 연속 공백 → 단일 공백, 3줄 이상 빈 줄 → 2줄
+    cleaned = _re.sub(r'[ \t]{2,}', ' ', cleaned)
     cleaned = _re.sub(r'\n{3,}', '\n\n', cleaned)
     return cleaned.strip()
 
@@ -199,7 +221,15 @@ def _create_habit_from_data(data: dict, db: Session) -> dict | None:
             if isinstance(d, (int, float)) and 0 <= int(d) <= 6
         })
 
+        # UserProfile id=1 없으면 생성 (싱글유저 앱이므로 항상 1행이어야 함)
+        from sqlalchemy import text as _sql_text
+        user_exists = db.query(UserProfile).filter(UserProfile.id == 1).first()
+        if not user_exists:
+            db.add(UserProfile(id=1))
+            db.flush()
+
         new_habit = Habit(
+            user_id=1,          # 명시적으로 user_id 지정
             title=title,
             repeat_days=days,
             times=times,
@@ -603,8 +633,9 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             else:
                 if hasattr(_chain, "ask_stream"):
                     async for token in _chain.ask_stream(user_message, extra_context=context):
-                        clean = _clean_korean(token)
-                        if clean:
+                        # _clean_token: strip 없이 공백 보존 → 단어 사이 붙는 현상 방지
+                        clean = _clean_token(token)
+                        if clean.strip():  # 내용이 없는 순수 공백 토큰만 제외
                             sent_any = True
                             payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
                             yield f"data: {payload}\n\n"
