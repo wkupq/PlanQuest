@@ -1,5 +1,5 @@
 """Plan-Quest - 아이템 배치 라우터 + 시간당 하트 생성."""
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +22,7 @@ GRID_ROWS = 5
 RARITY_HEART_CONFIG = {
     "common":    (6, 1),   # 6시간마다 1하트
     "rare":      (4, 2),   # 4시간마다 2하트
-    "unique":    (3, 3),   # 3시간마다 3하트 ← 신규 등급
+    "unique":    (3, 3),   # 3시간마다 3하트
     "epic":      (2, 4),   # 2시간마다 4하트
     "legendary": (1, 6),   # 1시간마다 6하트
 }
@@ -115,7 +115,7 @@ class MoveRequest(BaseModel):
 @router.patch("/placed-items/{placed_id}/position")
 def move_placed_item(placed_id: int, req: MoveRequest, db: Session = Depends(get_db)):
     """배치된 캐릭터를 새 좌표로 이동.
-    PlacedItem.id 기준 — 다른 캐릭터와 헷갈리지 않음."""
+    PlacedItem.id 기준 — 다른 캐릭터와 혼동 없음."""
     _validate_grid(req.grid_x, req.grid_y)
 
     placed = db.query(PlacedItem).filter(PlacedItem.id == placed_id).first()
@@ -150,6 +150,9 @@ def harvest_placed(placed_id: int, db: Session = Depends(get_db)):
         raise HTTPException(400, "수확할 하트가 아직 없어요. 조금만 더 기다려보세요.")
 
     user = db.query(UserProfile).first()
+    if not user:
+        raise HTTPException(404, "유저 프로필 없음")
+
     user.hearts += pending
     user.total_hearts_earned += pending
     user.level = (user.total_hearts_earned // 10) + 1

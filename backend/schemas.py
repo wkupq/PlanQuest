@@ -46,14 +46,6 @@ class TreeResponse(BaseModel):
     growth_stage: int
     hearts_available: int
 
-    # 씨앗 클릭 시 정보 팝업에 사용
-    repeat_days: List[int] = []   # [0,1,2,3,4] = 월~금
-    times: List[str] = []         # ["09:00", "18:00"]
-    alarm_enabled: bool = True
-    hearts_reward: int = 1
-    streak: int = 0
-    completed_today: bool = False
-
 
 # ============ 상점 ============
 
@@ -63,7 +55,7 @@ class ShopItemResponse(BaseModel):
     category: str
     price: int
     emoji: str
-    image_url: str = ""
+    image_url: str = ""   # PNG 파일명 (없으면 빈 문자열 → emoji 대체 렌더링)
     description: str
     rarity: str
     unlock_level: int
@@ -88,7 +80,7 @@ class PlacedItemResponse(BaseModel):
     grid_y: int
     item_name: str
     item_emoji: str
-    item_image_url: str = ""
+    item_image_url: str = ""   # PNG 파일명 (없으면 emoji 대체)
     item_category: str
-    rarity: str = "common"           # 등급 (common/rare/unique/epic/legendary)
-    pending_hearts: int = 0          # 지금 수확 가능한 하트
+    rarity: str = "common"
+    pending_hearts: int = 0    # 수확 가능한 누적 하트

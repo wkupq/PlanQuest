@@ -1,128 +1,68 @@
 """
-DB 스키마 마이그레이션 — 누락된 컬럼 자동 추가.
-
-언제 쓰는지:
-  models.py 에 새 컬럼이 추가됐는데 SQLite DB 파일이 옛날 스키마라서
-  "no such column: ..." 에러가 날 때.
-
-사용법:
-  cd backend
-  python migrate_db.py
-
-실행 결과:
-  ~/habit_forest.db 에서 누락된 컬럼들을 ALTER TABLE 로 추가.
-  데이터는 보존됨.
+migrate_db.py — 기존 DB에 신규 컬럼 추가 (안전한 ALTER TABLE)
+image_url (shop_items), last_heart_gen (placed_items) 추가
 """
-import os
 import sqlite3
-import sys
+import os
+import logging
 
-# database.py 와 동일한 경로
-DB_PATH = os.path.join(os.path.expanduser("~"), "habit_forest.db")
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
-# 각 테이블별로 "있어야 하는 컬럼: SQL 정의" 매핑.
-# 나중에 모델에 새 컬럼 추가되면 여기에도 추가하면 됨.
-REQUIRED_COLUMNS = {
-    "shop_items": {
-        "image_url":    "TEXT DEFAULT ''",
-        "description":  "TEXT DEFAULT ''",
-        "rarity":       "TEXT DEFAULT 'common'",
-        "unlock_level": "INTEGER DEFAULT 1",
-    },
-    "habits": {
-        "alarm_enabled":  "BOOLEAN DEFAULT 1",
-        "hearts_reward":  "INTEGER DEFAULT 1",
-        "streak":         "INTEGER DEFAULT 0",
-        "completed_today": "BOOLEAN DEFAULT 0",
-        "last_completed":  "DATETIME",
-    },
-    "trees_on_map": {
-        "growth_stage":     "INTEGER DEFAULT 0",
-        "hearts_available": "INTEGER DEFAULT 0",
-        "last_harvest":     "DATETIME",
-    },
-    # 배치 캐릭터 시간당 하트 생성용
-    "placed_items": {
-        "last_heart_gen": "DATETIME",
-    },
-    "user_profile": {
-        "level":               "INTEGER DEFAULT 1",
-        "total_hearts_earned": "INTEGER DEFAULT 0",
-    },
-    # 캘린더 히트맵용 — 일정 완료 기록
-    "habit_completion": {
-        "habit_id":      "INTEGER",
-        "user_id":       "INTEGER DEFAULT 1",
-        "completed_at":  "DATETIME",
-        "hearts_earned": "INTEGER DEFAULT 1",
-    },
-    # W3 D4-6: RAG 메모리
-    "user_memory": {
-        "memory_type":      "TEXT DEFAULT 'conversation'",
-        "content":          "TEXT",
-        "chroma_id":        "TEXT DEFAULT ''",
-        "importance_score": "REAL DEFAULT 0.5",
-        "access_count":     "INTEGER DEFAULT 0",
-        "last_accessed":    "DATETIME",
-        "created_at":       "DATETIME",
-    },
-}
+
+def get_db_path() -> str:
+    """database.py에서 DB 경로 추출, 없으면 기본값 사용"""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(base_dir, "habit_forest.db")
+    return db_path
+
+
+def column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
+    cur.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cur.fetchall())
 
 
 def migrate():
-    if not os.path.exists(DB_PATH):
-        print(f"[INFO] DB 파일이 아직 없습니다: {DB_PATH}")
-        print("       백엔드를 한 번 실행하면 자동 생성됩니다.")
+    db_path = get_db_path()
+    if not os.path.exists(db_path):
+        logger.info("DB 없음 — 마이그레이션 불필요 (앱 시작 시 자동 생성됨)")
         return
 
-    print(f"[OK] DB 파일 발견: {DB_PATH}")
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    total_added = 0
-    for table, cols in REQUIRED_COLUMNS.items():
-        # 테이블 존재 확인
-        cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            (table,),
-        )
-        if not cur.fetchone():
-            print(f"[SKIP] {table} 테이블 없음 (백엔드 실행 시 자동 생성됨)")
-            continue
+    changed = False
 
-        # 현재 컬럼 목록
-        cur.execute(f"PRAGMA table_info({table})")
-        existing = {row[1] for row in cur.fetchall()}
-
-        # 누락된 것만 추가
-        added_here = []
-        for col, type_def in cols.items():
-            if col not in existing:
-                try:
-                    cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {type_def}")
-                    added_here.append(col)
-                    total_added += 1
-                except sqlite3.OperationalError as e:
-                    print(f"[FAIL] {table}.{col} 추가 실패: {e}")
-
-        if added_here:
-            print(f"[ADD] {table}: {', '.join(added_here)}")
-        else:
-            print(f"[OK]  {table}: 이상 없음")
-
-    conn.commit()
-    conn.close()
-
-    if total_added:
-        print(f"\n총 {total_added}개 컬럼 추가됨. 이제 백엔드를 다시 실행하세요:")
+    # 1) shop_items.image_url
+    if not column_exists(cur, "shop_items", "image_url"):
+        cur.execute("ALTER TABLE shop_items ADD COLUMN image_url TEXT DEFAULT ''")
+        logger.info("✅ shop_items.image_url 컬럼 추가")
+        changed = True
     else:
-        print(f"\n변경사항 없음. 백엔드 그대로 실행하세요:")
-    print("  python main.py")
+        logger.info("⏭ shop_items.image_url 이미 존재")
+
+    # 2) placed_items.last_heart_gen
+    if not column_exists(cur, "placed_items", "last_heart_gen"):
+        cur.execute("ALTER TABLE placed_items ADD COLUMN last_heart_gen DATETIME")
+        # 기존 행의 last_heart_gen = placed_at (없으면 현재 시각)
+        cur.execute("""
+            UPDATE placed_items
+            SET last_heart_gen = COALESCE(placed_at, CURRENT_TIMESTAMP)
+            WHERE last_heart_gen IS NULL
+        """)
+        logger.info("✅ placed_items.last_heart_gen 컬럼 추가 + 기존 행 초기화")
+        changed = True
+    else:
+        logger.info("⏭ placed_items.last_heart_gen 이미 존재")
+
+    if changed:
+        conn.commit()
+        logger.info("✅ 마이그레이션 완료")
+    else:
+        logger.info("이미 최신 스키마 — 변경 없음")
+
+    conn.close()
 
 
 if __name__ == "__main__":
-    try:
-        migrate()
-    except Exception as e:
-        print(f"\n[ERROR] {type(e).__name__}: {e}", file=sys.stderr)
-        sys.exit(1)
+    migrate()
