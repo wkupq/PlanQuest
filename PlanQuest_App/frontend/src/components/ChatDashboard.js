@@ -40,7 +40,7 @@ function MessageText({ text }) {
   );
 }
 
-export default function ChatDashboard({ onClose }) {
+export default function ChatDashboard({ onClose, onScheduleCreated }) {
   const [messages, setMessages] = useState(loadMessages);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -136,6 +136,7 @@ export default function ChatDashboard({ onClose }) {
             const data = JSON.parse(jsonStr);
 
             if (data.done) {
+              let scheduleCreated = false;
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== botMsgId) return m;
@@ -144,9 +145,17 @@ export default function ChatDashboard({ onClose }) {
                     .replace(/__CREATE__[\s\S]*$/g, '')
                     .replace(/\s*-\s*$/g, '')   // 끝에 남은 단독 하이픈 제거
                     .trim();
+                  // 일정 등록 확인 메시지 감지 → App에 새로고침 요청
+                  if (isScheduleConfirm(cleanText)) {
+                    scheduleCreated = true;
+                  }
                   return { ...m, text: cleanText, streaming: false };
                 })
               );
+              // 일정이 등록됐으면 App의 habits/trees 데이터 새로고침
+              if (scheduleCreated && onScheduleCreated) {
+                setTimeout(() => onScheduleCreated(), 300);
+              }
               break;
             }
 

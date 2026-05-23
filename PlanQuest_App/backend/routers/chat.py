@@ -308,17 +308,47 @@ def _extract_gmail_keywords(user_message: str) -> str:
     return " OR ".join(keywords) if keywords else ""
 
 
+def _extract_email_body(payload: dict, max_chars: int = 500) -> str:
+    """
+    Gmail 메시지 payload에서 text/plain 본문 추출 (최대 max_chars자).
+    멀티파트 메시지도 재귀 탐색.
+    보안: base64 디코딩 오류 시 빈 문자열 반환.
+    """
+    import base64
+
+    mime = payload.get("mimeType", "")
+    if mime == "text/plain":
+        data = payload.get("body", {}).get("data", "")
+        if data:
+            try:
+                text = base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+                # 연속 공백·빈 줄 정리
+                text = _re.sub(r'\r\n', '\n', text)
+                text = _re.sub(r'\n{3,}', '\n\n', text)
+                return text.strip()[:max_chars]
+            except Exception:
+                return ""
+    # 멀티파트: text/plain 파트 재귀 탐색
+    if "multipart" in mime:
+        for part in payload.get("parts", []):
+            result = _extract_email_body(part, max_chars)
+            if result:
+                return result
+    return ""
+
+
 def _fetch_gmail_messages(
     gmail_svc,
     query: str,
     max_results: int,
     seen_ids: set,
-    include_snippet: bool = False,
+    include_body: bool = False,
 ) -> list:
     """
     Gmail API 메시지 목록 조회.
     - seen_ids: 중복 제거
-    - include_snippet: True면 메일 미리보기(snippet, 최대 200자) 포함
+    - include_body: True면 본문 텍스트(최대 500자) 포함
+      (snippet은 200자 자동 미리보기, body는 실제 텍스트)
     """
     try:
         res = gmail_svc.users().messages().list(
@@ -330,22 +360,33 @@ def _fetch_gmail_messages(
             if m["id"] in seen_ids:
                 continue
             seen_ids.add(m["id"])
+
+            # 본문 필요 시 format=full, 아니면 metadata만
+            fmt = "full" if include_body else "metadata"
             msg = gmail_svc.users().messages().get(
                 userId="me", id=m["id"],
-                format="metadata",
-                metadataHeaders=["Subject", "From", "Date"],
+                format=fmt,
+                metadataHeaders=["Subject", "From", "Date"] if not include_body else None,
             ).execute()
+
             headers = msg["payload"]["headers"]
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(제목 없음)")
             sender  = next((h["value"] for h in headers if h["name"] == "From"),    "(발신자 없음)")
             date    = next((h["value"] for h in headers if h["name"] == "Date"),    "")
-            # snippet: Gmail이 자동 생성하는 미리보기 텍스트 (본문 앞 200자)
-            snippet = msg.get("snippet", "") if include_snippet else ""
+
+            # 본문: 실제 텍스트 추출 (snippet보다 정확한 날짜/시간 정보 포함 가능)
+            body = ""
+            if include_body:
+                body = _extract_email_body(msg["payload"])
+                if not body:
+                    # 본문 추출 실패 시 snippet 폴백
+                    body = msg.get("snippet", "")[:300]
+
             result.append({
                 "subject": subject[:80],
                 "sender":  sender[:50],
                 "date":    date[:25],
-                "snippet": snippet[:200],
+                "body":    body,
             })
         return result
     except Exception as e:
@@ -403,9 +444,9 @@ def _try_get_google_context(user_query: str = "") -> str:
             if user_query:
                 keywords = _extract_gmail_keywords(user_query)
                 if keywords:
-                    # 키워드 검색은 snippet(본문 미리보기) 포함해서 가져옴
+                    # 키워드 검색: 실제 본문 텍스트(최대 500자) 포함 — 날짜·시간 정보 추출 정확도 향상
                     keyword_results = _fetch_gmail_messages(
-                        gmail, keywords, 10, seen_ids, include_snippet=True
+                        gmail, keywords, 5, seen_ids, include_body=True
                     )
                     lines.append("")
                     lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
@@ -413,8 +454,8 @@ def _try_get_google_context(user_query: str = "") -> str:
                         for m in keyword_results:
                             lines.append(f"- [{m['date']}] {m['sender']}")
                             lines.append(f"  제목: {m['subject']}")
-                            if m.get("snippet"):
-                                lines.append(f"  내용 미리보기: {m['snippet']}")
+                            if m.get("body"):
+                                lines.append(f"  본문:\n{m['body']}")
                     else:
                         lines.append(f"'{keywords}' 관련 이메일 없음")
 
