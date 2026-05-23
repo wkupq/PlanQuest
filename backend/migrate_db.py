@@ -11,10 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_db_path() -> str:
-    """database.py에서 DB 경로 추출, 없으면 기본값 사용"""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(base_dir, "habit_forest.db")
-    return db_path
+    """database.py와 동일한 경로: 홈 디렉토리의 habit_forest.db"""
+    return os.path.join(os.path.expanduser("~"), "habit_forest.db")
 
 
 def column_exists(cur: sqlite3.Cursor, table: str, column: str) -> bool:
