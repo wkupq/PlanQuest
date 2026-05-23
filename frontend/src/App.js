@@ -163,7 +163,10 @@ export default function App() {
 
       {/* 패널 모달들 */}
       {activePanel === 'chat' && (
-        <ChatDashboard onClose={() => setActivePanel(null)} />
+        <ChatDashboard
+          onClose={() => setActivePanel(null)}
+          onScheduleCreated={refresh}
+        />
       )}
 
       {activePanel === 'calendar' && (
