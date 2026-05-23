@@ -84,12 +84,19 @@ _CHAT_SYSTEM = (
     "\n"
     "## 답변 형식\n"
     "- 짧고 명확하게 핵심만 답변하세요. 서론 없이 바로 시작하세요.\n"
-    "- 여러 항목은 줄바꿈 후 '- '로 구분하세요.\n"
+    "- 여러 항목(이메일 목록, 일정 목록 등)은 반드시 한 항목씩 줄바꿈(\\n)으로 구분하세요.\n"
+    "- 절대 여러 항목을 한 줄에 이어 쓰지 마세요. 반드시 줄바꿈하세요.\n"
     "- 마크다운 문법(**볼드**, ##헤더, `코드`, _이탤릭_)을 절대 사용하지 마세요.\n"
     "- 이모지는 꼭 필요한 경우만 1~2개 사용하세요.\n"
     "\n"
+    "## 이메일/일정 목록 형식 예시\n"
+    "이메일이 여러 개 있을 때는 반드시 이렇게 출력하세요:\n"
+    "1번 메일: [날짜] 보낸사람 | 제목\n"
+    "2번 메일: [날짜] 보낸사람 | 제목\n"
+    "(절대 '-[날짜]보낸사람|제목-[날짜]...' 처럼 이어 쓰지 마세요)\n"
+    "\n"
     "## 일정 등록 기능\n"
-    "사용자가 일정/할일을 추가·등록·넣어달라고 하면:\n"
+    "사용자가 '추가해줘', '등록해줘', '넣어줘' 같이 명시적으로 일정 등록을 요청할 때만:\n"
     "1. 자연스럽게 확인 답변을 먼저 작성하세요.\n"
     "2. 답변 마지막에 아래 태그를 단독 줄로 추가하세요:\n"
     '   __CREATE__:{"title":"제목","time":"HH:MM","days":[요일숫자],"repeat":true}\n'
@@ -97,7 +104,7 @@ _CHAT_SYSTEM = (
     "   - time: 없으면 빈 문자열\n"
     "   - repeat: 반복 일정 true, 1회성 false\n"
     "3. 필요한 정보(제목, 시간, 반복여부)가 부족하면 먼저 물어보세요.\n"
-    "4. __CREATE__ 태그는 반드시 일정 등록 요청일 때만 사용하세요.\n"
+    "4. 일정 조회·메일 확인·일반 대화에는 __CREATE__ 태그를 절대 사용하지 마세요.\n"
 )
 
 
@@ -131,14 +138,24 @@ except Exception as e:
 def _clean_korean(text: str) -> str:
     """
     응답 텍스트 정제:
-    1. 마크다운 기호 제거 (UI가 렌더링 안 해서 날 것으로 노출됨)
-    2. CJK(중국어/일본어) 문자 → 공백
-    3. 연속 공백 정리
+    1. __CREATE__ 태그 제거 (스트리밍 중 노출 방지)
+    2. 마크다운 기호 제거
+    3. CJK(중국어/일본어) 문자 → 공백
+    4. 줄바꿈 정규화 (가독성)
+    5. 연속 공백 정리
     """
-    cleaned = _MD_RE.sub('', text)
+    # 1) __CREATE__ 태그 및 이후 줄 제거 (비스트리밍 경로 보호)
+    cleaned = _re.sub(r'__CREATE__[\s\S]*', '', text)
+    # 2) 마크다운 기호 제거
+    cleaned = _MD_RE.sub('', cleaned)
+    # 3) CJK → 공백
     cleaned = _CJK_RE.sub(' ', cleaned)
-    cleaned = _re.sub(r'  +', ' ', cleaned).strip()
-    return cleaned
+    # 4) 인라인 리스트 ".- " 패턴을 줄바꿈 리스트로 변환
+    cleaned = _re.sub(r'\.\s*-\s+', '.\n- ', cleaned)
+    # 5) 연속 공백 → 단일 공백, 3줄 이상 빈 줄 → 2줄
+    cleaned = _re.sub(r'  +', ' ', cleaned)
+    cleaned = _re.sub(r'\n{3,}', '\n\n', cleaned)
+    return cleaned.strip()
 
 
 # ── 일정 생성 관련 함수 ───────────────────────────────────────────
@@ -261,8 +278,18 @@ def _extract_gmail_keywords(user_message: str) -> str:
     return " OR ".join(keywords) if keywords else ""
 
 
-def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set) -> list:
-    """Gmail API 메시지 목록 조회. seen_ids로 중복 제거."""
+def _fetch_gmail_messages(
+    gmail_svc,
+    query: str,
+    max_results: int,
+    seen_ids: set,
+    include_snippet: bool = False,
+) -> list:
+    """
+    Gmail API 메시지 목록 조회.
+    - seen_ids: 중복 제거
+    - include_snippet: True면 메일 미리보기(snippet, 최대 200자) 포함
+    """
     try:
         res = gmail_svc.users().messages().list(
             userId="me", q=query, maxResults=max_results
@@ -282,10 +309,13 @@ def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(제목 없음)")
             sender  = next((h["value"] for h in headers if h["name"] == "From"),    "(발신자 없음)")
             date    = next((h["value"] for h in headers if h["name"] == "Date"),    "")
+            # snippet: Gmail이 자동 생성하는 미리보기 텍스트 (본문 앞 200자)
+            snippet = msg.get("snippet", "") if include_snippet else ""
             result.append({
                 "subject": subject[:80],
                 "sender":  sender[:50],
                 "date":    date[:25],
+                "snippet": snippet[:200],
             })
         return result
     except Exception as e:
@@ -343,12 +373,18 @@ def _try_get_google_context(user_query: str = "") -> str:
             if user_query:
                 keywords = _extract_gmail_keywords(user_query)
                 if keywords:
-                    keyword_results = _fetch_gmail_messages(gmail, keywords, 20, seen_ids)
+                    # 키워드 검색은 snippet(본문 미리보기) 포함해서 가져옴
+                    keyword_results = _fetch_gmail_messages(
+                        gmail, keywords, 10, seen_ids, include_snippet=True
+                    )
                     lines.append("")
                     lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
                     if keyword_results:
                         for m in keyword_results:
-                            lines.append(f"- [{m['date']}] {m['sender']} | {m['subject']}")
+                            lines.append(f"- [{m['date']}] {m['sender']}")
+                            lines.append(f"  제목: {m['subject']}")
+                            if m.get("snippet"):
+                                lines.append(f"  내용 미리보기: {m['snippet']}")
                     else:
                         lines.append(f"'{keywords}' 관련 이메일 없음")
 

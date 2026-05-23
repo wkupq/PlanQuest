@@ -80,7 +80,7 @@ class OllamaManager:
         self.max_workers = max_workers
 
         # 모델 이름: 인자 → model_config.txt → 기본값
-        self.model = model or self._load_model_config() or "qwen2.5:7b"
+        self.model = model or self._load_model_config() or "qwen3.5:9b"
         logger.info("OllamaManager 초기화 — 모델: %s", self.model)
 
         self._pq: queue.PriorityQueue[_QueueItem] = queue.PriorityQueue(

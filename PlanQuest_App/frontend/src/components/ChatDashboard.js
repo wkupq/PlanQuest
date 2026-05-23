@@ -137,9 +137,15 @@ export default function ChatDashboard({ onClose }) {
 
             if (data.done) {
               setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === botMsgId ? { ...m, streaming: false } : m
-                )
+                prev.map((m) => {
+                  if (m.id !== botMsgId) return m;
+                  // 스트리밍 완료 시 __CREATE__ 태그 및 이후 내용 제거
+                  const cleanText = m.text
+                    .replace(/__CREATE__[\s\S]*$/g, '')
+                    .replace(/\s*-\s*$/g, '')   // 끝에 남은 단독 하이픈 제거
+                    .trim();
+                  return { ...m, text: cleanText, streaming: false };
+                })
               );
               break;
             }
