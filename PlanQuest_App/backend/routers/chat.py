@@ -45,7 +45,8 @@ _CREATE_INTENT_KEYWORDS = [
 
 # ── 일정 생성 태그 파싱 정규식 ────────────────────────────────────
 # AI 응답 마지막에 __CREATE__:{"title":..., "time":..., "days":[], "repeat":bool} 형태
-_CREATE_TAG_RE = _re.compile(r'__CREATE__:\s*(\{.*?\})', _re.DOTALL)
+# 중첩 없는 단순 JSON 객체 — 탐욕적 매칭으로 마지막 } 까지 잡음
+_CREATE_TAG_RE = _re.compile(r'__CREATE__\s*:\s*(\{[^}]*\})', _re.DOTALL)
 
 # ── 마크다운 제거 ─────────────────────────────────────────────────
 _MD_RE = _re.compile(
@@ -73,38 +74,42 @@ _CJK_RE = _re.compile(
 
 # ── 채팅 전용 시스템 프롬프트 ─────────────────────────────────────
 _CHAT_SYSTEM = (
-    "당신은 한국어 전용 AI 스케줄러 비서입니다.\n"
+    "당신은 한국어 전용 AI 스케줄러 비서입니다. 사용자의 일정·이메일을 분석하고 도움을 줍니다.\n"
     "\n"
     "## 절대 규칙\n"
-    "1. 반드시 한국어로만 답변하세요. 중국어(한자), 일본어를 절대 사용하지 마세요.\n"
-    "2. 내부 생각(thinking/reasoning) 과정을 출력하지 마세요. 최종 답변만 출력하세요.\n"
-    "3. 단어 사이 띄어쓰기를 반드시 지키세요.\n"
-    "4. 제공된 [사용자 일정 및 Gmail 데이터]를 반드시 참고해서 답변하세요.\n"
-    "5. 데이터에 없는 내용은 '해당 정보가 없습니다'라고 명확히 말하세요.\n"
+    "1. 반드시 한국어로만 답변하세요. 중국어(한자 포함), 일본어를 절대 출력하지 마세요.\n"
+    "2. 내부 추론 과정(<think>...</think> 등)을 출력하지 마세요. 최종 답변만 출력하세요.\n"
+    "3. 제공된 [사용자 일정 및 Gmail 데이터]를 반드시 참고해서 정확히 답변하세요.\n"
+    "4. 데이터에 없는 내용은 '해당 정보가 없습니다'라고 짧게 말하세요.\n"
+    "5. 마크다운 문법(**볼드**, ##헤더, `코드`, _이탤릭_)을 절대 사용하지 마세요.\n"
     "\n"
     "## 답변 형식\n"
-    "- 짧고 명확하게 핵심만 답변하세요. 서론 없이 바로 시작하세요.\n"
-    "- 여러 항목(이메일 목록, 일정 목록 등)은 반드시 한 항목씩 줄바꿈(\\n)으로 구분하세요.\n"
-    "- 절대 여러 항목을 한 줄에 이어 쓰지 마세요. 반드시 줄바꿈하세요.\n"
-    "- 마크다운 문법(**볼드**, ##헤더, `코드`, _이탤릭_)을 절대 사용하지 마세요.\n"
-    "- 이모지는 꼭 필요한 경우만 1~2개 사용하세요.\n"
+    "- 서론 없이 바로 핵심을 답변하세요.\n"
+    "- 항목이 여러 개(이메일, 일정 등)이면 반드시 줄바꿈으로 구분하세요.\n"
+    "- 이모지는 맥락상 꼭 필요할 때만 1~2개 사용하세요.\n"
     "\n"
-    "## 이메일/일정 목록 형식 예시\n"
-    "이메일이 여러 개 있을 때는 반드시 이렇게 출력하세요:\n"
-    "1번 메일: [날짜] 보낸사람 | 제목\n"
-    "2번 메일: [날짜] 보낸사람 | 제목\n"
-    "(절대 '-[날짜]보낸사람|제목-[날짜]...' 처럼 이어 쓰지 마세요)\n"
+    "## 이메일 목록 답변 예시 (반드시 이 형식으로)\n"
+    "1번 메일: [2025-05-20] sender@co.kr | 제목 예시\n"
+    "2번 메일: [2025-05-19] other@co.kr | 다른 제목\n"
     "\n"
-    "## 일정 등록 기능\n"
-    "사용자가 '추가해줘', '등록해줘', '넣어줘' 같이 명시적으로 일정 등록을 요청할 때만:\n"
-    "1. 자연스럽게 확인 답변을 먼저 작성하세요.\n"
-    "2. 답변 마지막에 아래 태그를 단독 줄로 추가하세요:\n"
-    '   __CREATE__:{"title":"제목","time":"HH:MM","days":[요일숫자],"repeat":true}\n'
-    "   - days: 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일 (없으면 [])\n"
-    "   - time: 없으면 빈 문자열\n"
-    "   - repeat: 반복 일정 true, 1회성 false\n"
-    "3. 필요한 정보(제목, 시간, 반복여부)가 부족하면 먼저 물어보세요.\n"
-    "4. 일정 조회·메일 확인·일반 대화에는 __CREATE__ 태그를 절대 사용하지 마세요.\n"
+    "## 이메일 내용 질문 예시\n"
+    "사용자: 'SKALA 메일 내용 알려줘'\n"
+    "답변: '[2025-05-20] SKALA 팀 | 제목: OT 일정 안내\n"
+    "본문 요약: 5월 22일 오전 10시 OT 예정입니다.'\n"
+    "\n"
+    "## 일정 등록 규칙 (매우 중요)\n"
+    "사용자가 '추가해줘', '등록해줘', '넣어줘', '만들어줘' 같이 명시적으로 요청할 때만:\n"
+    "STEP 1. 자연스러운 한국어 확인 문장을 먼저 쓰세요. 예: '네, 매주 월요일 오전 9시 팀미팅을 등록할게요!'\n"
+    "STEP 2. 확인 문장 바로 뒤에 반드시 아래 태그를 추가하세요 (공백/줄바꿈 없이 정확히):\n"
+    "__CREATE__:{\"title\":\"제목\",\"time\":\"HH:MM\",\"days\":[0],\"repeat\":true}\n"
+    "   필드 설명:\n"
+    "   - title: 일정 제목 (필수)\n"
+    "   - time: 시간 HH:MM 형식, 없으면 빈 문자열 \"\"\n"
+    "   - days: 요일 숫자 배열 (0=월,1=화,2=수,3=목,4=금,5=토,6=일), 없으면 []\n"
+    "   - repeat: 매주 반복이면 true, 1회성이면 false\n"
+    "   예시: __CREATE__:{\"title\":\"팀 미팅\",\"time\":\"09:00\",\"days\":[0],\"repeat\":true}\n"
+    "STEP 3. 필요 정보가 없으면 먼저 물어보세요 (제목은 필수).\n"
+    "주의: 일정 조회·메일 확인·일반 대화에는 __CREATE__ 태그를 절대 사용하지 마세요.\n"
 )
 
 
@@ -272,13 +277,26 @@ def _check_ollama_alive() -> bool:
 
 # ── Gmail 키워드 추출 ─────────────────────────────────────────────
 
+# 발신자 패턴 감지용 키워드 (이 단어 다음에 오는 토큰이 발신자)
+_SENDER_TRIGGERS = ("에서", "로부터", "한테서", "이", "가")
+
 def _extract_gmail_keywords(user_message: str) -> str:
+    """
+    Gmail 검색 쿼리 추출.
+
+    핵심 설계:
+    - Gmail 검색에서 공백 = AND, 'OR' 키워드 = OR
+    - OR는 관련 없는 메일도 반환하므로 AND(공백) 방식 사용
+    - 발신자 패턴('skala에서') → from: 연산자로 변환
+    - 대괄호 안 주요 키워드 우선 추출 (메일 제목에 많음)
+    - 일정 생성 요청(추가해줘 등)은 Gmail 검색 불필요 → 빈 문자열 반환
+    - 가장 길고 고유한 키워드 상위 2개만 AND 검색
+    """
     josa_suffixes = (
-        "에서", "에게", "한테", "로부터", "으로부터",
-        "에서는", "에서도", "에게는", "로서", "으로서",
-        "에게도", "한테서", "에도", "에는", "로도",
-        "에", "의", "은", "는", "이", "가", "을", "를",
-        "와", "과", "도", "로", "으로", "만",
+        "에서는", "에서도", "에게는", "로부터", "으로부터", "한테서",
+        "으로서", "에게도", "에서", "에게", "한테", "로서",
+        "에도", "에는", "로도", "에", "의", "은", "는",
+        "이", "가", "을", "를", "와", "과", "도", "로", "으로", "만",
     )
     skip_words = {
         "메일", "이메일", "gmail", "있어", "있나요", "있나", "있어요",
@@ -287,25 +305,93 @@ def _extract_gmail_keywords(user_message: str) -> str:
         "몇", "개", "건", "있습니다", "없습니다", "주세요", "해주세요",
         "뭔데", "뭐야", "뭔가요", "알려", "알고", "싶어", "궁금",
         "어디", "어때", "어떻게", "좀", "제발", "혹시", "그거",
+        "잘", "내용", "봐", "확인", "찾아봐", "확인해봐", "찾아",
+        "관한", "대한", "관해", "대해", "결과", "발표",
+        "날짜", "시간", "언제", "일정", "추가", "등록", "넣어",
+        "추가해줘", "등록해줘", "넣어줘", "만들어줘", "추가해", "등록해",
     }
-    tokens = user_message.strip().split()
-    keywords = []
-    for tok in tokens:
-        word = tok
+
+    # 0) 일정 생성 요청은 Gmail 검색 불필요 (AI가 직접 __CREATE__ 태그 처리)
+    _strong_create = ("추가해줘", "등록해줘", "넣어줘", "만들어줘", "일정에 추가", "일정에 넣어")
+    if any(k in user_message for k in _strong_create):
+        return ""
+
+    # 1) 대괄호 안 키워드 우선 추출 (예: "[SK주식회사(AX)] SKALA")
+    bracket_words = _re.findall(r'\[([^\]]+)\]', user_message)
+    # 대괄호로 감싸진 원본 문자열 범위 — 중복 추출 방지용
+    bracket_spans = set()
+    for m in _re.finditer(r'\[[^\]]+\]', user_message):
+        bracket_spans.add(m.start())
+
+    priority_keywords: list[str] = []
+    for bw in bracket_words:
+        # 소괄호도 분리 ("SK주식회사(AX)" → "SK주식회사", "AX")
+        sub_tokens = _re.split(r'[\s()]+', bw)
+        for tok in sub_tokens:
+            tok = tok.strip(",.~[]")
+            if len(tok) >= 2 and tok.lower() not in skip_words:
+                priority_keywords.append(tok)
+
+    # 2) 발신자 패턴 감지 (예: "skala에서 온 메일" → from:skala)
+    from_parts: list[str] = []
+    sender_words: set[str] = set()  # from: 발신자 단어 → body_keywords에서 중복 제외
+    msg_tokens = user_message.strip().split()
+
+    # 대괄호 포함 토큰은 이미 처리됐으므로 스킵
+    bracket_token_re = _re.compile(r'^\[')
+
+    for tok in msg_tokens:
+        for sfx in ("에서", "로부터", "한테서"):
+            if tok.endswith(sfx) and len(tok) > len(sfx) + 1:
+                sender_word = tok[: -len(sfx)].strip("?!.,~[]()").lower()
+                if len(sender_word) >= 2 and sender_word not in skip_words:
+                    from_parts.append(f"from:{sender_word}")
+                    sender_words.add(sender_word)
+                break
+
+    # 3) 일반 토큰 키워드 추출 (조사 제거)
+    keywords: list[str] = []
+    for tok in msg_tokens:
+        # 대괄호로 시작하는 토큰은 이미 bracket 처리됨 → 스킵
+        if bracket_token_re.match(tok):
+            continue
+        # 괄호·대괄호·특수문자 제거
+        word = _re.sub(r'[\[\](){}]', '', tok).strip("?!.,~\"' ")
+        # 조사 제거
         for sfx in sorted(josa_suffixes, key=len, reverse=True):
             if word.endswith(sfx) and len(word) > len(sfx) + 1:
                 word = word[: -len(sfx)]
                 break
-        word = word.strip("?!.,~")
-        if len(word) < 2 or word in skip_words:
+        word = word.strip("?!.,~\"' ")
+        if len(word) < 2 or word.lower() in skip_words:
             continue
+        # 영숫자+한글 혼합 토큰 처리 (예: "skct봐야하" → "skct")
+        # 단, 한글 부분이 4자 이상이면 의미 있는 단어로 판단해 전체 유지
+        # (예: "ai역량면접" → 한글 4자 이상 → 전체 유지)
+        ascii_match = _re.match(r'^([A-Za-z0-9_\-\.]+)', word)
+        if ascii_match and len(ascii_match.group(1)) >= 2:
+            korean_suffix = word[len(ascii_match.group(1)):]
+            if 0 < len(korean_suffix) <= 3:
+                # 3자 이하 한글 접미사 = 조사/어미로 판단 → 영문만
+                word = ascii_match.group(1)
+            # 4자 이상이면 의미 있는 한글 → word 그대로 유지
         keywords.append(word)
 
-    msg_lower = user_message
-    is_schedule_query = any(k in msg_lower for k in _SCHEDULE_INTENTS)
-    if is_schedule_query:
-        return "일정 OR 약속 OR 미팅 OR 회의 OR 예약 OR 초대"
-    return " OR ".join(keywords) if keywords else ""
+    # 4) 중복 제거 + 길이 내림차순 (긴 단어 = 더 구체적)
+    #    - from: 발신자 단어는 body_keywords에서 제외 (중복 방지)
+    seen: set[str] = set(sender_words)  # 발신자 단어는 이미 from:으로 처리됨
+    ordered: list[str] = []
+    for w in priority_keywords + keywords:
+        lw = w.lower()
+        if lw not in seen:
+            seen.add(lw)
+            ordered.append(w)
+    ordered.sort(key=len, reverse=True)
+
+    # 5) 결과 없으면 빈 문자열 (Gmail 검색 생략)
+    body_keywords = ordered[:2]  # 상위 2개 AND 검색
+    parts = from_parts + body_keywords
+    return " ".join(parts) if parts else ""
 
 
 def _extract_email_body(payload: dict, max_chars: int = 500) -> str:
@@ -444,9 +530,11 @@ def _try_get_google_context(user_query: str = "") -> str:
             if user_query:
                 keywords = _extract_gmail_keywords(user_query)
                 if keywords:
-                    # 키워드 검색: 실제 본문 텍스트(최대 500자) 포함 — 날짜·시간 정보 추출 정확도 향상
+                    # 키워드 검색 전용 seen set — unread에 이미 있는 메일도 검색 결과에 포함
+                    # (seen_ids를 공유하면 unread에 있는 키워드 메일이 누락되는 버그 방지)
+                    keyword_seen: set = set()
                     keyword_results = _fetch_gmail_messages(
-                        gmail, keywords, 5, seen_ids, include_body=True
+                        gmail, keywords, 5, keyword_seen, include_body=True
                     )
                     lines.append("")
                     lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")

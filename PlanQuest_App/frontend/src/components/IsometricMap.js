@@ -67,8 +67,9 @@ export default function IsometricMap({
 
   // ─── 컨테이너 클릭 → 역산으로 grid 좌표 → 액션 ──
   const handleContainerClick = async (e) => {
-    // 빌보드 (캐릭터/나무) 가 직접 잡은 클릭은 여기로 안 옴 (stopPropagation)
-    if (e.target.closest('.billboard')) return;
+    // 빌보드(캐릭터/나무) 클릭 차단 — 단, 이동/배치 모드에서는 모든 타일 허용
+    // (이동 모드에서 다른 캐릭터가 있는 칸으로도 이동할 수 있어야 함)
+    if (!moveMode && !placementMode && e.target.closest('.billboard')) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     const sx = e.clientX - rect.left - rect.width / 2;
@@ -189,7 +190,12 @@ export default function IsometricMap({
         key={`tree-${tree.id}`}
         className="billboard"
         style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, zIndex: 100 + z }}
-        onClick={(e) => { e.stopPropagation(); onTreeClick(tree); }}
+        onClick={(e) => {
+          // 이동/배치 모드에서는 stopPropagation 하지 않고 컨테이너에 위임
+          if (moveMode || placementMode) return;
+          e.stopPropagation();
+          onTreeClick(tree);
+        }}
       >
         {/* 시간 배지 — 나무 위에 작게 (분 단위) */}
         {nextAlarm && (
@@ -217,8 +223,9 @@ export default function IsometricMap({
         className={`billboard${isMoving ? ' billboard-moving' : ''}`}
         style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)`, zIndex: 100 + z + 1 }}
         onClick={(e) => {
+          // 이동/배치 모드에서는 stopPropagation 하지 않고 컨테이너에 위임
+          if (moveMode || placementMode) return;
           e.stopPropagation();
-          if (placementMode || moveMode) return;
           onCharClick && onCharClick(item);
         }}
         onContextMenu={(e) => handleRemove(e, item)}

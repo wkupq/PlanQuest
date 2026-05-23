@@ -162,7 +162,8 @@ class RAGChain:
             payload["system"] = self.system_prompt
 
         # 동기 HTTP 스트리밍을 별도 스레드에서 실행해 이벤트 루프를 막지 않음
-        loop = asyncio.get_event_loop()
+        # get_running_loop(): 현재 실행 중인 루프를 정확히 가져옴 (FastAPI/uvicorn 호환)
+        loop = asyncio.get_running_loop()
         token_queue: asyncio.Queue[str | None] = asyncio.Queue()
 
         def _stream_worker():
@@ -178,26 +179,27 @@ class RAGChain:
                         if not raw_line:
                             continue
                         try:
-                            data = json.loads(raw_line)
+                            chunk = json.loads(raw_line)
                         except json.JSONDecodeError:
                             continue
-                        token = data.get("response", "")
+                        token = chunk.get("response", "")
                         if token:
                             # 중국어 필터링은 chat.py token_stream에서 처리
                             loop.call_soon_threadsafe(token_queue.put_nowait, token)
-                        if data.get("done", False):
+                        if chunk.get("done", False):
                             break
             except Exception as exc:
-                logger.error("ask_stream 오류: %s", exc)
+                logger.error("ask_stream 스트리밍 오류: %s", exc)
             finally:
-                loop.call_soon_threadsafe(token_queue.put_nowait, None)  # 종료 신호
+                # 반드시 None 종료 신호 전송 (예외 발생 시도 보장)
+                loop.call_soon_threadsafe(token_queue.put_nowait, None)
 
-        # 별도 스레드에서 HTTP 스트리밍 실행
+        # 별도 스레드에서 HTTP 스트리밍 실행 (await 불필요 — 결과는 큐로 수신)
         import concurrent.futures
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         loop.run_in_executor(executor, _stream_worker)
 
-        # 토큰 하나씩 yield
+        # 토큰 하나씩 yield — None 수신 시 종료
         while True:
             token = await token_queue.get()
             if token is None:
