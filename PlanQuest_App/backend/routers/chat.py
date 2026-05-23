@@ -187,6 +187,119 @@ def _clean_korean(text: str) -> str:
 
 # ── 일정 생성 관련 함수 ───────────────────────────────────────────
 
+def _extract_schedule_nlp(user_message: str) -> dict | None:
+    """
+    AI 없이 한국어 메시지에서 일정 정보를 직접 추출 (폴백용).
+    AI가 __CREATE__ 태그를 누락했을 때 사용.
+
+    처리 패턴:
+      "내일 오전 10시에 팀 미팅 추가해줘"
+        → {"title":"팀 미팅","time":"10:00","days":[],"repeat":false}
+      "매주 월요일 오전 9시 스크럼 등록해줘"
+        → {"title":"스크럼","time":"09:00","days":[0],"repeat":true}
+    """
+    msg = user_message
+
+    # ── 1) 시간 추출 (가장 먼저 — 이후 제목 추출 시 제거) ──────────
+    time_str = ""
+
+    def _pm_hour(h: int) -> int:
+        return h + 12 if h < 12 else h
+
+    # 순서대로 시도 (더 구체적인 패턴 먼저)
+    _time_patterns = [
+        (r'오후\s*(\d{1,2})시\s*(\d{1,2})분', lambda m: f"{_pm_hour(int(m.group(1))):02d}:{int(m.group(2)):02d}"),
+        (r'오전\s*(\d{1,2})시\s*(\d{1,2})분', lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"),
+        (r'오후\s*(\d{1,2})시',               lambda m: f"{_pm_hour(int(m.group(1))):02d}:00"),
+        (r'오전\s*(\d{1,2})시',               lambda m: f"{int(m.group(1)):02d}:00"),
+        (r'저녁\s*(\d{1,2})시\s*(\d{1,2})분', lambda m: f"{_pm_hour(int(m.group(1))):02d}:{int(m.group(2)):02d}"),
+        (r'저녁\s*(\d{1,2})시',               lambda m: f"{_pm_hour(int(m.group(1))):02d}:00"),
+        (r'아침\s*(\d{1,2})시\s*(\d{1,2})분', lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"),
+        (r'아침\s*(\d{1,2})시',               lambda m: f"{int(m.group(1)):02d}:00"),
+        (r'밤\s*(\d{1,2})시\s*(\d{1,2})분',   lambda m: f"{_pm_hour(int(m.group(1))):02d}:{int(m.group(2)):02d}"),
+        (r'밤\s*(\d{1,2})시',                 lambda m: f"{_pm_hour(int(m.group(1))):02d}:00"),
+        (r'낮\s*(\d{1,2})시\s*(\d{1,2})분',   lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"),
+        (r'낮\s*(\d{1,2})시',                 lambda m: f"{int(m.group(1)):02d}:00"),
+        (r'(\d{1,2})시\s*(\d{1,2})분',        lambda m: f"{int(m.group(1)):02d}:{int(m.group(2)):02d}"),
+        (r'(\d{1,2}):(\d{2})',                lambda m: f"{int(m.group(1)):02d}:{m.group(2)}"),
+        (r'(\d{1,2})시',                      lambda m: f"{int(m.group(1)):02d}:00"),
+    ]
+    for pat, fmt in _time_patterns:
+        m = _re.search(pat, msg)
+        if m:
+            time_str = fmt(m)
+            msg = msg[:m.start()] + " " + msg[m.end():]
+            break
+
+    # ── 2) 반복 요일 추출 ────────────────────────────────────────
+    days: list[int] = []
+    repeat = False
+    # "매주 월요일" 처럼 '매주'가 있으면 이후 요일 언급도 repeat=True
+    has_weekly = bool(_re.search(r'매주|격주', msg))
+
+    if _re.search(r'매일|날마다', msg):
+        days = list(range(7))
+        repeat = True
+    elif _re.search(r'평일|주중', msg):
+        days = [0, 1, 2, 3, 4]
+        repeat = True
+    elif _re.search(r'주말', msg):
+        days = [5, 6]
+        repeat = True
+    else:
+        _day_map = [("월", 0), ("화", 1), ("수", 2), ("목", 3), ("금", 4), ("토", 5), ("일", 6)]
+        for name, num in _day_map:
+            # "매수요일", "매수" 등 — 반복
+            if _re.search(rf'매{name}(?:요일)?', msg):
+                days.append(num)
+                repeat = True
+            # "수요일마다" — 반복 (negative lookbehind: 앞에 한글 없어야 함)
+            elif _re.search(rf'(?<![가-힣]){name}요일마다', msg):
+                days.append(num)
+                repeat = True
+            # "수요일" (단순 요일 언급 — 매주 있으면 repeat도 True)
+            elif _re.search(rf'(?<![가-힣]){name}요일(?!마다)', msg):
+                days.append(num)
+                if has_weekly:
+                    repeat = True
+        days = sorted(set(days))
+
+    # ── 3) 제목 추출 (노이즈 제거 후 남은 한국어) ───────────────
+    _remove = [
+        r'추가해줘?|등록해줘?|넣어줘?|만들어줘?',
+        r'추가해|등록해|넣어|만들어',
+        r'일정(?:으로|에|에다가|으로)?(?:\s*추가|등록|넣어)?',
+        r'캘린더에?(?:\s*추가|등록)?',
+        r'알람\s*설정|알림\s*설정',
+        r'내일|오늘|모레|다음\s*주|이번\s*주|매주',
+        r'매일|평일|주말|주중',
+        r'매[월화수목금토일](?:요일)?|[월화수목금토일]요일마다|[월화수목금토일]요일|[월화수목금토일]마다',
+        r'오전|오후|아침|저녁|낮|밤',
+        r'\d+시간|\d+분|\d+초',
+        r'해줘?|알려줘?|주세요|해주세요',
+        r'(?<![가-힣])에(?=[^서]|$)',  # 조사 "에" (에서 제외)
+        r'에서|에게|한테|한테서|로부터|부터',
+    ]
+    title_msg = msg
+    for pat in _remove:
+        title_msg = _re.sub(pat, ' ', title_msg)
+    title = _re.sub(r'\s+', ' ', title_msg).strip('?!.,~"\' ()')
+    title = title.strip()
+
+    if not title or len(title) < 1:
+        logger.warning("NLP 일정 추출: 제목 없음 (원본='%s')", user_message[:60])
+        return None
+
+    result = {
+        "title": title[:100],
+        "time": time_str,
+        "days": days,
+        "repeat": repeat,
+    }
+    logger.info("NLP 일정 추출 성공: %s", result)
+    return result
+
+
 def _parse_create_tag(text: str) -> tuple:
     """
     AI 응답에서 __CREATE__ 태그를 파싱하고 제거.
@@ -710,22 +823,21 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         sent_any = False
 
         try:
-            # ── 일정 생성 의도: 논스트리밍으로 전체 응답 받아 파싱 ──────
+            # ── 일정 생성 의도: 비스트리밍으로 전체 응답 받아 파싱 ──────
             if is_create:
-                loop = asyncio.get_event_loop()
+                # asyncio.to_thread: 동기 함수를 스레드 풀에서 실행 (이벤트 루프 블로킹 없음)
                 try:
                     raw_reply = await asyncio.wait_for(
-                        loop.run_in_executor(
-                            None,
-                            lambda: _chain.ask(user_message, extra_context=context),
-                        ),
+                        asyncio.to_thread(_chain.ask, user_message, extra_context=context),
                         timeout=130,
                     )
                 except asyncio.TimeoutError:
                     raw_reply = ""
+                except Exception as ask_err:
+                    logger.error("is_create _chain.ask 오류: %s", ask_err)
+                    raw_reply = ""
 
                 if not raw_reply:
-                    # 타임아웃 → Ollama 상태 확인 후 안내
                     if _check_ollama_alive():
                         msg = "응답 시간이 초과됐어요. ⏱ 잠시 후 다시 시도해 주세요."
                     else:
@@ -734,17 +846,37 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                     yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
                     return
 
-                # 태그 파싱 + 마크다운 정제
+                logger.info("AI raw_reply (is_create) 길이=%d: %s", len(raw_reply), raw_reply[:200])
+
+                # ① AI 응답에서 __CREATE__ 태그 파싱 시도
                 clean_reply, schedule_data = _parse_create_tag(raw_reply)
                 clean_reply = _clean_korean(clean_reply)
 
-                # 일정 DB 저장 (새 세션 — 요청 세션과 별도)
+                # ② AI가 태그를 누락했으면 NLP 폴백으로 직접 추출
+                if not schedule_data:
+                    logger.warning("AI가 __CREATE__ 태그 미생성 → NLP 폴백 시도")
+                    schedule_data = _extract_schedule_nlp(user_message)
+
+                # ③ DB 저장 — SessionLocal() 직접 관리 (context manager 버전 호환 문제 방지)
                 schedule_result = None
                 if schedule_data:
-                    with SessionLocal() as new_db:
+                    new_db = SessionLocal()
+                    try:
                         schedule_result = _create_habit_from_data(schedule_data, new_db)
+                        logger.info("일정 생성 결과: %s", schedule_result)
+                    except Exception as db_err:
+                        logger.error("일정 DB 저장 오류: %s", db_err)
+                        new_db.rollback()
+                    finally:
+                        new_db.close()
+                else:
+                    logger.warning("schedule_data 없음 — 일정 생성 불가")
 
-                # 단어 단위로 스트리밍
+                # ④ 응답 스트리밍
+                # AI가 의미 있는 답변을 생성했으면 그것을 사용, 아니면 기본 메시지
+                if not clean_reply.strip() and schedule_result:
+                    clean_reply = f"'{schedule_result['title']}' 일정을 등록했어요!"
+
                 for word in clean_reply.split(' '):
                     if word:
                         sent_any = True
@@ -752,11 +884,16 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                         yield f"data: {payload}\n\n"
                         await asyncio.sleep(0.02)
 
-                # 일정 등록 확인 메시지
+                # ⑤ 일정 등록 확인 메시지 (프론트 onScheduleCreated 트리거용 ✅ 포함)
                 if schedule_result:
                     confirm = f"\n\n✅ '{schedule_result['title']}' 일정이 등록됐어요! 일정 탭에서 확인해보세요."
                     sent_any = True
                     yield f"data: {_json.dumps({'token': confirm, 'done': False}, ensure_ascii=False)}\n\n"
+                elif is_create and not schedule_result:
+                    # 일정 생성 실패 안내
+                    fail_msg = "\n\n일정 제목이나 시간 정보를 더 명확히 알려주세요. (예: '내일 오전 10시 팀 미팅 추가해줘')"
+                    sent_any = True
+                    yield f"data: {_json.dumps({'token': fail_msg, 'done': False}, ensure_ascii=False)}\n\n"
 
             # ── 일반 스트리밍 ────────────────────────────────────────
             else:
@@ -771,13 +908,9 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
                         await asyncio.sleep(0)
                 else:
                     # 폴백: 전체 응답 → 단어 스트리밍
-                    loop = asyncio.get_event_loop()
                     try:
                         reply = await asyncio.wait_for(
-                            loop.run_in_executor(
-                                None,
-                                lambda: _chain.ask(user_message, extra_context=context),
-                            ),
+                            asyncio.to_thread(_chain.ask, user_message, extra_context=context),
                             timeout=130,
                         )
                     except asyncio.TimeoutError:
@@ -925,4 +1058,46 @@ async def debug_context(q: str = "skala 메일 있어?", db: Session = Depends(g
         "google_ctx_present":   bool(google_ctx),
         "total_context_len":    len(full_context),
         "preview":              full_context[:2000],
+    }
+
+
+@router.post("/test-schedule")
+async def test_schedule_creation(req: ChatRequest, db: Session = Depends(get_db)):
+    """
+    일정 생성 파이프라인 단위 테스트 엔드포인트.
+    AI 없이 NLP 추출 → DB 저장까지 전 과정을 직접 테스트.
+    보안: 개발 디버그 용도 (프로덕션에서는 제거 또는 비활성화 권고).
+    """
+    msg = req.message.strip()
+    if not msg:
+        raise HTTPException(400, "메시지가 비어 있습니다.")
+
+    # 1) NLP 추출
+    nlp_result = _extract_schedule_nlp(msg)
+
+    # 2) __CREATE__ 태그 파싱 테스트 (있으면)
+    tag_result = None
+    test_tag = f'__CREATE__:{{"title":"NLP테스트","time":"09:00","days":[0],"repeat":true}}'
+    _, tag_result = _parse_create_tag(test_tag)
+
+    # 3) DB 저장 시도 (NLP 결과로)
+    db_result = None
+    db_error = None
+    if nlp_result:
+        new_db = SessionLocal()
+        try:
+            db_result = _create_habit_from_data(nlp_result, new_db)
+        except Exception as e:
+            db_error = str(e)
+            new_db.rollback()
+        finally:
+            new_db.close()
+
+    return {
+        "input":          msg,
+        "nlp_extracted":  nlp_result,
+        "tag_parse_ok":   tag_result is not None,
+        "db_saved":       db_result,
+        "db_error":       db_error,
+        "is_create_kw":   any(kw in msg for kw in _CREATE_INTENT_KEYWORDS),
     }
