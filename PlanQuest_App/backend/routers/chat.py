@@ -1,18 +1,21 @@
-"""chat.py — AI 챗봇 라우터 (RAGChain + 일정 + Google 컨텍스트 주입)"""
+"""chat.py — AI 챗봇 라우터 (RAGChain + 일정 + Google 컨텍스트 + 일정 등록)"""
 import sys
 import os
 import re as _re
 import asyncio
 import json as _json
 import subprocess
+import logging
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models import Habit, UserProfile
+from database import get_db, SessionLocal
+from models import Habit, UserProfile, TreeOnMap
+
+logger = logging.getLogger(__name__)
 
 # project-files 경로 추가
 PROJECT_FILES_PATH = os.path.abspath(
@@ -21,30 +24,214 @@ PROJECT_FILES_PATH = os.path.abspath(
 if PROJECT_FILES_PATH not in sys.path:
     sys.path.insert(0, PROJECT_FILES_PATH)
 
-# Google Calendar / Gmail 연동 (토큰 없으면 비활성화)
+# ── Google 스코프 ─────────────────────────────────────────────────
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
+# ── 스케줄 의도 키워드 ────────────────────────────────────────────
 _SCHEDULE_INTENTS = [
     "일정", "약속", "미팅", "회의", "예약", "등록", "추가", "넣어",
     "스케줄", "날짜", "시간", "장소", "초대", "참석",
 ]
 
+# ── 일정 생성 의도 키워드 (채팅 → DB 저장) ───────────────────────
+_CREATE_INTENT_KEYWORDS = [
+    "추가해줘", "등록해줘", "넣어줘", "만들어줘", "추가해", "등록해",
+    "일정으로", "캘린더에 추가", "일정 추가", "일정 등록",
+    "알람 설정", "알림 설정", "잊지 않게", "일정에 넣어",
+]
+
+# ── 일정 생성 태그 파싱 정규식 ────────────────────────────────────
+# AI 응답 마지막에 __CREATE__:{"title":..., "time":..., "days":[], "repeat":bool} 형태
+_CREATE_TAG_RE = _re.compile(r'__CREATE__:\s*(\{.*?\})', _re.DOTALL)
+
+# ── 마크다운 제거 ─────────────────────────────────────────────────
+_MD_RE = _re.compile(
+    r'\*{1,3}|'      # * ** ***
+    r'#{1,6}\s*|'    # # ## ### ...
+    r'`{1,3}|'       # ` `` ```
+    r'_{1,2}|'       # _ __
+    r'~~|'           # ~~취소선~~
+    r'>\s*',         # > 인용
+    _re.UNICODE
+)
+
+# ── CJK 제거 ─────────────────────────────────────────────────────
+_CJK_RE = _re.compile(
+    r'['
+    r'一-鿿'   # CJK 통합 한자
+    r'㐀-䶿'   # CJK 확장 A
+    r'　-〿'   # CJK 기호·문장부호
+    r'＀-￯'   # 전각 로마자 / 반각 가타카나
+    r'⺀-⻿'   # CJK 부수 보충
+    r'㇀-㇯'   # CJK 획
+    r']+',
+    _re.UNICODE
+)
+
+# ── 채팅 전용 시스템 프롬프트 ─────────────────────────────────────
+_CHAT_SYSTEM = (
+    "당신은 한국어 전용 AI 스케줄러 비서입니다.\n"
+    "\n"
+    "## 절대 규칙\n"
+    "1. 반드시 한국어로만 답변하세요. 중국어(한자), 일본어를 절대 사용하지 마세요.\n"
+    "2. 내부 생각(thinking/reasoning) 과정을 출력하지 마세요. 최종 답변만 출력하세요.\n"
+    "3. 단어 사이 띄어쓰기를 반드시 지키세요.\n"
+    "4. 제공된 [사용자 일정 및 Gmail 데이터]를 반드시 참고해서 답변하세요.\n"
+    "5. 데이터에 없는 내용은 '해당 정보가 없습니다'라고 명확히 말하세요.\n"
+    "\n"
+    "## 답변 형식\n"
+    "- 짧고 명확하게 핵심만 답변하세요. 서론 없이 바로 시작하세요.\n"
+    "- 여러 항목은 줄바꿈 후 '- '로 구분하세요.\n"
+    "- 마크다운 문법(**볼드**, ##헤더, `코드`, _이탤릭_)을 절대 사용하지 마세요.\n"
+    "- 이모지는 꼭 필요한 경우만 1~2개 사용하세요.\n"
+    "\n"
+    "## 일정 등록 기능\n"
+    "사용자가 일정/할일을 추가·등록·넣어달라고 하면:\n"
+    "1. 자연스럽게 확인 답변을 먼저 작성하세요.\n"
+    "2. 답변 마지막에 아래 태그를 단독 줄로 추가하세요:\n"
+    '   __CREATE__:{"title":"제목","time":"HH:MM","days":[요일숫자],"repeat":true}\n'
+    "   - days: 0=월, 1=화, 2=수, 3=목, 4=금, 5=토, 6=일 (없으면 [])\n"
+    "   - time: 없으면 빈 문자열\n"
+    "   - repeat: 반복 일정 true, 1회성 false\n"
+    "3. 필요한 정보(제목, 시간, 반복여부)가 부족하면 먼저 물어보세요.\n"
+    "4. __CREATE__ 태그는 반드시 일정 등록 요청일 때만 사용하세요.\n"
+)
+
+
+# ── RAGChain 초기화 ───────────────────────────────────────────────
+try:
+    from rag_chain import RAGChain
+    from string import Template as _Template
+
+    _CHAT_PROMPT_TMPL = _Template(
+        "[사용자 일정 및 Gmail 데이터]\n"
+        "$context\n\n"
+        "[질문] $question\n"
+        "[답변]"
+    )
+
+    _chain = RAGChain(
+        prompt_template=_CHAT_PROMPT_TMPL,
+        use_rag=False,
+        system_prompt=_CHAT_SYSTEM,
+    )
+    _ai_available = True
+    logger.info("RAGChain 로드 성공")
+except Exception as e:
+    _chain = None
+    _ai_available = False
+    logger.warning("RAGChain 로드 실패 — AI 비활성화: %s", e)
+
+
+# ── 텍스트 정제 ───────────────────────────────────────────────────
+
+def _clean_korean(text: str) -> str:
+    """
+    응답 텍스트 정제:
+    1. 마크다운 기호 제거 (UI가 렌더링 안 해서 날 것으로 노출됨)
+    2. CJK(중국어/일본어) 문자 → 공백
+    3. 연속 공백 정리
+    """
+    cleaned = _MD_RE.sub('', text)
+    cleaned = _CJK_RE.sub(' ', cleaned)
+    cleaned = _re.sub(r'  +', ' ', cleaned).strip()
+    return cleaned
+
+
+# ── 일정 생성 관련 함수 ───────────────────────────────────────────
+
+def _parse_create_tag(text: str) -> tuple:
+    """
+    AI 응답에서 __CREATE__ 태그를 파싱하고 제거.
+    Returns: (cleaned_text, schedule_dict | None)
+    """
+    match = _CREATE_TAG_RE.search(text)
+    if not match:
+        return text, None
+    try:
+        data = _json.loads(match.group(1))
+        cleaned = _CREATE_TAG_RE.sub('', text).strip()
+        return cleaned, data
+    except _json.JSONDecodeError:
+        logger.warning("__CREATE__ 태그 JSON 파싱 실패: %s", match.group(1))
+        return text, None
+
+
+def _create_habit_from_data(data: dict, db: Session) -> dict | None:
+    """
+    AI가 추출한 데이터로 Habit + TreeOnMap 생성.
+    보안: title 길이 제한, days/time 유효성 검사.
+    """
+    try:
+        title = str(data.get("title", "")).strip()[:100]
+        if not title:
+            logger.warning("일정 생성 실패: 제목 없음")
+            return None
+
+        # 시간: HH:MM 형식만 허용
+        time_str = str(data.get("time", "")).strip()
+        times = [time_str] if time_str and _re.match(r'^\d{2}:\d{2}$', time_str) else []
+
+        # 요일: 0~6 정수만 허용, 중복 제거
+        days_raw = data.get("days", [])
+        days = sorted({
+            int(d) for d in (days_raw if isinstance(days_raw, list) else [])
+            if isinstance(d, (int, float)) and 0 <= int(d) <= 6
+        })
+
+        new_habit = Habit(
+            title=title,
+            repeat_days=days,
+            times=times,
+            alarm_enabled=True,
+            hearts_reward=1,
+        )
+        db.add(new_habit)
+        db.flush()  # ID 확보 (commit 전)
+
+        tree_count = db.query(TreeOnMap).count()
+        tree = TreeOnMap(
+            habit_id=new_habit.id,
+            grid_x=tree_count % 6,
+            grid_y=tree_count // 6,
+            growth_stage=0,
+            hearts_available=0,
+        )
+        db.add(tree)
+        db.commit()
+        db.refresh(new_habit)
+
+        logger.info("채팅으로 일정 생성 — id=%d, title='%s'", new_habit.id, title)
+        return {"id": new_habit.id, "title": title}
+
+    except Exception as e:
+        db.rollback()
+        logger.error("일정 생성 DB 오류: %s", e)
+        return None
+
+
+def _check_ollama_alive() -> bool:
+    """Ollama 서버 생존 확인 (타임아웃 감지 후 호출)"""
+    try:
+        import requests as _req
+        r = _req.get("http://127.0.0.1:11434/api/tags", timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+# ── Gmail 키워드 추출 ─────────────────────────────────────────────
+
 def _extract_gmail_keywords(user_message: str) -> str:
-    """
-    사용자 메시지에서 Gmail 검색용 키워드를 추출한다.
-    - 공백 기준으로 토큰 분리 → 한국어 조사 접미사 제거 → 불용어 스킵
-    - '일정에 넣어야 할' 류 스케줄 질문은 schedule 전용 키워드로 치환
-    """
-    # 공백 단위로 분리해서 각 토큰 끝의 조사/어미 제거
     josa_suffixes = (
         "에서", "에게", "한테", "로부터", "으로부터",
         "에서는", "에서도", "에게는", "로서", "으로서",
         "에게도", "한테서", "에도", "에는", "로도",
         "에", "의", "은", "는", "이", "가", "을", "를",
-        "와", "과", "도", "로", "으로", "만", "도",
+        "와", "과", "도", "로", "으로", "만",
     )
     skip_words = {
         "메일", "이메일", "gmail", "있어", "있나요", "있나", "있어요",
@@ -54,11 +241,9 @@ def _extract_gmail_keywords(user_message: str) -> str:
         "뭔데", "뭐야", "뭔가요", "알려", "알고", "싶어", "궁금",
         "어디", "어때", "어떻게", "좀", "제발", "혹시", "그거",
     }
-
     tokens = user_message.strip().split()
     keywords = []
     for tok in tokens:
-        # 조사 접미사 제거
         word = tok
         for sfx in sorted(josa_suffixes, key=len, reverse=True):
             if word.endswith(sfx) and len(word) > len(sfx) + 1:
@@ -69,20 +254,15 @@ def _extract_gmail_keywords(user_message: str) -> str:
             continue
         keywords.append(word)
 
-    # 스케줄 관련 질문인지 감지
     msg_lower = user_message
     is_schedule_query = any(k in msg_lower for k in _SCHEDULE_INTENTS)
-
     if is_schedule_query:
-        # 스케줄 의도: Gmail에서 일정 관련 메일 검색
         return "일정 OR 약속 OR 미팅 OR 회의 OR 예약 OR 초대"
-
-    # 키워드들을 OR로 연결 → 하나라도 포함된 메일 검색 (AND보다 훨씬 넓게 검색)
     return " OR ".join(keywords) if keywords else ""
 
 
 def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set) -> list:
-    """Gmail API로 메시지 목록 가져오기. seen_ids로 중복 제거."""
+    """Gmail API 메시지 목록 조회. seen_ids로 중복 제거."""
     try:
         res = gmail_svc.users().messages().list(
             userId="me", q=query, maxResults=max_results
@@ -102,14 +282,19 @@ def _fetch_gmail_messages(gmail_svc, query: str, max_results: int, seen_ids: set
             subject = next((h["value"] for h in headers if h["name"] == "Subject"), "(제목 없음)")
             sender  = next((h["value"] for h in headers if h["name"] == "From"),    "(발신자 없음)")
             date    = next((h["value"] for h in headers if h["name"] == "Date"),    "")
-            result.append({"subject": subject[:60], "sender": sender[:40], "date": date[:25]})
+            result.append({
+                "subject": subject[:80],
+                "sender":  sender[:50],
+                "date":    date[:25],
+            })
         return result
-    except Exception:
+    except Exception as e:
+        logger.warning("Gmail 메시지 조회 실패: %s", e)
         return []
 
 
 def _try_get_google_context(user_query: str = "") -> str:
-    """Google Calendar + Gmail에서 컨텍스트 가져오기. 실패 시 빈 문자열 반환."""
+    """Google Calendar + Gmail 컨텍스트. 실패 시 빈 문자열."""
     try:
         from auth_manager import get_credentials
         from googleapiclient.discovery import build
@@ -117,7 +302,7 @@ def _try_get_google_context(user_query: str = "") -> str:
         creds = get_credentials(GOOGLE_SCOPES)
         lines = []
 
-        # ── Google Calendar 오늘~7일치 일정 ──
+        # ── Google Calendar ──
         try:
             cal = build("calendar", "v3", credentials=creds)
             now_utc = datetime.now(timezone.utc)
@@ -131,7 +316,6 @@ def _try_get_google_context(user_query: str = "") -> str:
                 orderBy="startTime",
             ).execute()
             events = events_result.get("items", [])
-
             lines.append("=== Google 캘린더 (7일 이내) ===")
             if events:
                 for e in events:
@@ -142,22 +326,20 @@ def _try_get_google_context(user_query: str = "") -> str:
         except Exception as cal_err:
             lines.append(f"=== Google 캘린더 로드 실패: {cal_err} ===")
 
-        # ── Gmail: 최근 미확인 5건 + 키워드 검색 결과 ──
+        # ── Gmail ──
         try:
             gmail = build("gmail", "v1", credentials=creds)
             seen_ids: set = set()
 
-            # 1) 최근 미확인 이메일 5건
             unread = _fetch_gmail_messages(gmail, "is:unread", 5, seen_ids)
             lines.append("")
             lines.append("=== Gmail 최근 미확인 이메일 ===")
             if unread:
                 for m in unread:
-                    lines.append(f"- [{m['date']}] 보낸사람: {m['sender']} | 제목: {m['subject']}")
+                    lines.append(f"- [{m['date']}] {m['sender']} | {m['subject']}")
             else:
                 lines.append("미확인 이메일 없음")
 
-            # 2) 사용자 질문 키워드로 추가 검색 (키워드가 있을 때만)
             if user_query:
                 keywords = _extract_gmail_keywords(user_query)
                 if keywords:
@@ -166,7 +348,7 @@ def _try_get_google_context(user_query: str = "") -> str:
                     lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
                     if keyword_results:
                         for m in keyword_results:
-                            lines.append(f"- [{m['date']}] 보낸사람: {m['sender']} | 제목: {m['subject']}")
+                            lines.append(f"- [{m['date']}] {m['sender']} | {m['subject']}")
                     else:
                         lines.append(f"'{keywords}' 관련 이메일 없음")
 
@@ -176,91 +358,20 @@ def _try_get_google_context(user_query: str = "") -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        # 토큰 없음 or 인증 안 됨 → 로그 남기고 빈 문자열 반환
-        import logging as _logging
-        _logging.getLogger(__name__).warning("Google 컨텍스트 로드 실패 (인증 필요): %s", e)
+        logger.warning("Google 컨텍스트 로드 실패 (인증 필요): %s", e)
         return ""
 
-try:
-    from rag_chain import RAGChain
-    from string import Template as _Template
 
-    # Gmail·일정 데이터에 맞는 전용 프롬프트 템플릿
-    _CHAT_PROMPT_TMPL = _Template(
-        "[사용자 일정 및 Gmail 데이터]\n"
-        "$context\n\n"
-        "[질문] $question\n"
-        "[답변]"
-    )
-    _NO_DATA_TMPL = _Template(
-        "[질문] $question\n"
-        "[답변]"
-    )
-
-    _chain = RAGChain(
-        prompt_template=_CHAT_PROMPT_TMPL,
-        use_rag=False,   # RAG 문서 DB는 사용 안 함 — Gmail/일정만 사용
-    )
-    _ai_available = True
-    print("[INFO] RAGChain 로드 성공")
-except Exception as e:
-    _chain = None
-    _ai_available = False
-    print(f"[WARN] RAGChain 로드 실패 — AI 비활성화: {e}")
-
-# ── 한국어 전용 응답 필터 ─────────────────────────────────────
-# CJK 통합 한자(U+4E00–U+9FFF), CJK 확장A(U+3400–U+4DBF) 제거
-# 한글(U+AC00–U+D7A3), 한글 자모(U+1100–U+11FF) 는 보존
-_CJK_RE = _re.compile(
-    '['
-    '一-鿿'   # CJK 통합 한자
-    '㐀-䶿'   # CJK 확장 A
-    ' 0-⩭f' # CJK 확장 B (surrogate)
-    '　-〿'   # CJK 기호·문장부호
-    '＀-￯'   # 전각 로마자 / 반각 가타카나
-    '⺀-⻿'   # CJK 부수 보충
-    '㇀-㇯'   # CJK 획
-    ']+',
-    _re.UNICODE
-)
-
-# 마크다운 제거용 패턴 (UI에서 렌더링 안 됨 → 날 것으로 노출되는 문제 방지)
-_MD_RE = _re.compile(
-    r'\*{1,3}|'        # * ** ***
-    r'#{1,6}\s*|'      # # ## ### ...
-    r'`{1,3}|'         # ` `` ```
-    r'_{1,2}|'         # _ __
-    r'~~|'             # ~~취소선~~
-    r'>\s*',           # > 인용
-    _re.UNICODE
-)
-
-def _clean_korean(text: str) -> str:
-    """
-    응답을 한국어 전용으로 정리한다.
-    1. 마크다운 문법 기호 제거 (UI가 렌더링 안 해서 날 것으로 노출됨)
-    2. CJK(중국어/일본어) 문자를 공백으로 치환 → 인접 단어 붙음 방지
-    3. 연속 공백 정리
-    4. 앞뒤 공백 제거
-    """
-    # 1) 마크다운 기호 제거
-    cleaned = _MD_RE.sub('', text)
-    # 2) CJK → 공백
-    cleaned = _CJK_RE.sub(' ', cleaned)
-    # 3) 연속 공백 → 단일 공백
-    cleaned = _re.sub(r'  +', ' ', cleaned).strip()
-    return cleaned
-
-
+# ── 라우터 ────────────────────────────────────────────────────────
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"]
 
 
 def build_schedule_context(db: Session) -> str:
-    """DB에서 일정/습관 데이터를 읽어 AI 컨텍스트 문자열로 변환"""
+    """DB 일정/습관 데이터를 AI 컨텍스트 문자열로 변환"""
     now = datetime.now()
-    today_weekday = now.weekday()  # 0=월 ~ 6=일
+    today_weekday = now.weekday()
     today_str = now.strftime("%Y년 %m월 %d일 (%a)")
     current_time = now.strftime("%H:%M")
 
@@ -288,17 +399,15 @@ def build_schedule_context(db: Session) -> str:
             ", ".join(DAY_NAMES[d] for d in sorted(repeat)) + "요일" if repeat else "반복 없음"
         )
         times_str = ", ".join(times) if times else "시간 미설정"
-        status = "✅ 완료" if h.completed_today else "⏳ 미완료"
+        status = "완료" if h.completed_today else "미완료"
         streak_str = f"{h.streak}일 연속" if h.streak > 0 else "시작 전"
 
         lines.append(
             f"- [{status}] {h.title} | 반복: {days_str} | 시간: {times_str} | 스트릭: {streak_str}"
         )
 
-        # 오늘 해당하는 일정 분류
         if today_weekday in repeat:
             today_habits.append(h)
-            # 아직 안 온 시간대 = 다음 일정
             for t in times:
                 if t > current_time and not h.completed_today:
                     upcoming_habits.append((h.title, t))
@@ -307,7 +416,7 @@ def build_schedule_context(db: Session) -> str:
     lines.append(f"=== 오늘({DAY_NAMES[today_weekday]}요일) 일정 ===")
     if today_habits:
         for h in today_habits:
-            status = "✅ 완료" if h.completed_today else "⏳ 미완료"
+            status = "완료" if h.completed_today else "미완료"
             times_str = ", ".join(h.times) if h.times else "시간 미설정"
             lines.append(f"- {status} {h.title} ({times_str})")
     else:
@@ -335,7 +444,7 @@ class ChatResponse(BaseModel):
 
 
 def _build_context(message: str, db: Session) -> str:
-    """일정 DB + Gmail 컨텍스트를 조합해 반환 (프롬프트와 분리)"""
+    """일정 DB + Gmail 컨텍스트 조합"""
     schedule_ctx = build_schedule_context(db)
     google_ctx = _try_get_google_context(user_query=message)
     parts = [schedule_ctx]
@@ -343,6 +452,8 @@ def _build_context(message: str, db: Session) -> str:
         parts.append(google_ctx)
     return "\n\n".join(parts)
 
+
+# ── 비스트리밍 채팅 ───────────────────────────────────────────────
 
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
@@ -356,73 +467,146 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
         )
 
     try:
-        # 메시지와 컨텍스트를 분리해서 전달 — rag_chain이 올바르게 조합
         context = _build_context(req.message, db)
-        reply = _clean_korean(_chain.ask(req.message, extra_context=context))
-        return ChatResponse(reply=reply, ai_available=True)
+        raw_reply = _chain.ask(req.message, extra_context=context)
+
+        # 일정 생성 태그 파싱
+        clean_reply, schedule_data = _parse_create_tag(raw_reply)
+        clean_reply = _clean_korean(clean_reply)
+
+        if schedule_data:
+            created = _create_habit_from_data(schedule_data, db)
+            if created:
+                clean_reply += f"\n\n✅ '{created['title']}' 일정이 등록됐어요!"
+
+        return ChatResponse(reply=clean_reply, ai_available=True)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 오류: {str(e)}")
 
 
+# ── SSE 스트리밍 채팅 ─────────────────────────────────────────────
+
 @router.post("/stream")
 async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
-    """SSE 스트리밍 응답 — TeamD ChatDashboard.js가 사용"""
+    """SSE 스트리밍 — ChatDashboard.js 사용"""
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="메시지가 비어 있습니다.")
 
     if not _ai_available or _chain is None:
-        # AI 비활성화 시 토큰 먼저 보내고 done 따로 전송 (프론트 done 우선 처리 버그 우회)
         async def error_stream():
-            msg = _json.dumps({"token": "⚠️ AI 모듈이 로드되지 않았습니다. 백엔드 터미널에서 pip install requests chromadb sentence-transformers rank-bm25 를 실행하고 서버를 재시작해주세요.", "done": False}, ensure_ascii=False)
+            msg = _json.dumps(
+                {"token": "⚠️ AI 모듈이 로드되지 않았습니다. 백엔드를 재시작해주세요.", "done": False},
+                ensure_ascii=False,
+            )
             yield f"data: {msg}\n\n"
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
-    # 컨텍스트는 동기적으로 미리 빌드 (DB 세션 유효 시점에)
+    # DB 세션 유효 시점에 컨텍스트 빌드
     try:
         context = _build_context(req.message, db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"컨텍스트 빌드 오류: {str(e)}")
 
-    # 실제 사용자 메시지와 컨텍스트를 분리해서 rag_chain에 전달
     user_message = req.message
+    is_create = any(kw in user_message for kw in _CREATE_INTENT_KEYWORDS)
 
     async def token_stream():
-        try:
-            sent_any = False  # 실제로 사용자에게 보낸 토큰이 있는지 추적
+        sent_any = False
 
-            if hasattr(_chain, "ask_stream"):
-                # 스트리밍 모드: 메시지와 컨텍스트 분리 전달
-                async for token in _chain.ask_stream(user_message, extra_context=context):
-                    clean = _clean_korean(token)
-                    if clean:
-                        sent_any = True
-                        payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
-                        yield f"data: {payload}\n\n"
-                    await asyncio.sleep(0)
-            else:
-                # 폴백: 전체 응답 한 번에 받아서 정리 후 전송
+        try:
+            # ── 일정 생성 의도: 논스트리밍으로 전체 응답 받아 파싱 ──────
+            if is_create:
                 loop = asyncio.get_event_loop()
-                reply = await loop.run_in_executor(None, _chain.ask, user_message, 5, 120, context)
-                reply = _clean_korean(reply)
-                for word in reply.split(" "):
+                try:
+                    raw_reply = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            lambda: _chain.ask(user_message, extra_context=context),
+                        ),
+                        timeout=130,
+                    )
+                except asyncio.TimeoutError:
+                    raw_reply = ""
+
+                if not raw_reply:
+                    # 타임아웃 → Ollama 상태 확인 후 안내
+                    if _check_ollama_alive():
+                        msg = "응답 시간이 초과됐어요. ⏱ 잠시 후 다시 시도해 주세요."
+                    else:
+                        msg = "Ollama 서버가 응답하지 않아요. 'ollama serve'를 실행해 주세요."
+                    yield f"data: {_json.dumps({'token': msg, 'done': False}, ensure_ascii=False)}\n\n"
+                    yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
+                    return
+
+                # 태그 파싱 + 마크다운 정제
+                clean_reply, schedule_data = _parse_create_tag(raw_reply)
+                clean_reply = _clean_korean(clean_reply)
+
+                # 일정 DB 저장 (새 세션 — 요청 세션과 별도)
+                schedule_result = None
+                if schedule_data:
+                    with SessionLocal() as new_db:
+                        schedule_result = _create_habit_from_data(schedule_data, new_db)
+
+                # 단어 단위로 스트리밍
+                for word in clean_reply.split(' '):
                     if word:
                         sent_any = True
-                        payload = _json.dumps({"token": word + " ", "done": False}, ensure_ascii=False)
+                        payload = _json.dumps({"token": word + ' ', "done": False}, ensure_ascii=False)
                         yield f"data: {payload}\n\n"
-                    await asyncio.sleep(0.02)
+                        await asyncio.sleep(0.02)
 
-            # 중국어로만 응답해서 아무것도 전달 못 했을 때 안내 메시지
+                # 일정 등록 확인 메시지
+                if schedule_result:
+                    confirm = f"\n\n✅ '{schedule_result['title']}' 일정이 등록됐어요! 일정 탭에서 확인해보세요."
+                    sent_any = True
+                    yield f"data: {_json.dumps({'token': confirm, 'done': False}, ensure_ascii=False)}\n\n"
+
+            # ── 일반 스트리밍 ────────────────────────────────────────
+            else:
+                if hasattr(_chain, "ask_stream"):
+                    async for token in _chain.ask_stream(user_message, extra_context=context):
+                        clean = _clean_korean(token)
+                        if clean:
+                            sent_any = True
+                            payload = _json.dumps({"token": clean, "done": False}, ensure_ascii=False)
+                            yield f"data: {payload}\n\n"
+                        await asyncio.sleep(0)
+                else:
+                    # 폴백: 전체 응답 → 단어 스트리밍
+                    loop = asyncio.get_event_loop()
+                    try:
+                        reply = await asyncio.wait_for(
+                            loop.run_in_executor(
+                                None,
+                                lambda: _chain.ask(user_message, extra_context=context),
+                            ),
+                            timeout=130,
+                        )
+                    except asyncio.TimeoutError:
+                        reply = ""
+
+                    reply = _clean_korean(reply)
+                    for word in reply.split(' '):
+                        if word:
+                            sent_any = True
+                            payload = _json.dumps({"token": word + ' ', "done": False}, ensure_ascii=False)
+                            yield f"data: {payload}\n\n"
+                            await asyncio.sleep(0.02)
+
+            # ── 아무 토큰도 못 보낸 경우 (타임아웃 / 빈 응답) ──────────
             if not sent_any:
-                fallback = _json.dumps(
-                    {"token": "죄송해요, 다시 한번 질문해 주시겠어요? 🙏", "done": False},
-                    ensure_ascii=False,
-                )
-                yield f"data: {fallback}\n\n"
+                if _check_ollama_alive():
+                    fallback = "응답이 너무 오래 걸렸어요. ⏱ 잠시 후 다시 질문해 주세요."
+                else:
+                    fallback = "Ollama 서버가 응답하지 않아요. 'ollama serve'를 실행해 주세요."
+                yield f"data: {_json.dumps({'token': fallback, 'done': False}, ensure_ascii=False)}\n\n"
 
             yield f"data: {_json.dumps({'token': '', 'done': True})}\n\n"
 
         except Exception as e:
+            logger.error("token_stream 오류: %s", e)
             err = _json.dumps({"error": str(e), "done": True}, ensure_ascii=False)
             yield f"data: {err}\n\n"
 
@@ -431,22 +615,24 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # nginx 버퍼링 비활성화
+            "X-Accel-Buffering": "no",
         },
     )
 
 
+# ── 헬스체크 ─────────────────────────────────────────────────────
+
 TARGET_MODEL = "qwen3.5:9b"
+
 
 @router.get("/health")
 async def chat_health():
-    """Ollama 실행 상태 확인 — OllamaPopup.js 및 ChatDashboard.js가 사용"""
+    """Ollama 실행 상태 확인 — OllamaPopup.js 및 ChatDashboard.js 사용"""
     ollama_installed = False
     ollama_running = False
     model_loaded = False
     error_msg = None
 
-    # 1. Ollama 바이너리 설치 여부 확인
     try:
         result = subprocess.run(
             ["ollama", "--version"],
@@ -456,14 +642,13 @@ async def chat_health():
     except (FileNotFoundError, subprocess.TimeoutExpired):
         ollama_installed = False
 
-    # 2. Ollama 서버 실행 여부 + 모델 목록 확인
     try:
         import httpx
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get("http://127.0.0.1:11434/api/tags")
             if resp.status_code == 200:
                 ollama_running = True
-                ollama_installed = True   # 실행 중이면 설치도 된 것
+                ollama_installed = True
                 tags = resp.json().get("models", [])
                 model_loaded = any(
                     TARGET_MODEL.split(":")[0] in m.get("name", "").lower()
@@ -474,36 +659,34 @@ async def chat_health():
 
     return {
         "ollama_installed": ollama_installed,
-        "ollama_running": ollama_running,
-        "model_loaded": model_loaded,
-        "model": TARGET_MODEL,
-        "ai_available": _ai_available,
-        "error": error_msg,
+        "ollama_running":   ollama_running,
+        "model_loaded":     model_loaded,
+        "model":            TARGET_MODEL,
+        "ai_available":     _ai_available,
+        "error":            error_msg,
     }
 
 
 @router.post("/setup-ollama")
 async def setup_ollama():
-    """Ollama 자동 설치 및 모델 다운로드 안내 — OllamaPopup.js가 사용"""
+    """Ollama 설치/모델 확인 — OllamaPopup.js 사용"""
     steps = []
     success = True
     error_msg = None
 
     try:
-        # 1. Ollama 프로세스가 실행 중인지 확인
         result = subprocess.run(
-            ["ollama", "list"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            ["ollama", "list"], capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
             steps.append({"step": "ollama_check", "status": "ok", "message": "Ollama가 실행 중입니다."})
         else:
-            steps.append({"step": "ollama_check", "status": "error", "message": "Ollama를 찾을 수 없습니다. https://ollama.ai 에서 설치하세요."})
+            steps.append({"step": "ollama_check", "status": "error",
+                          "message": "Ollama를 찾을 수 없습니다. https://ollama.ai 에서 설치하세요."})
             success = False
     except FileNotFoundError:
-        steps.append({"step": "ollama_check", "status": "error", "message": "Ollama가 설치되어 있지 않습니다. https://ollama.ai 에서 설치하세요."})
+        steps.append({"step": "ollama_check", "status": "error",
+                      "message": "Ollama가 설치되어 있지 않습니다. https://ollama.ai 에서 설치하세요."})
         success = False
     except subprocess.TimeoutExpired:
         steps.append({"step": "ollama_check", "status": "error", "message": "Ollama 응답 시간 초과."})
@@ -514,22 +697,16 @@ async def setup_ollama():
         error_msg = str(e)
 
     if success:
-        # 2. qwen3.5:14b 모델이 있는지 확인 (pull은 시간이 오래 걸리므로 안내만)
         try:
             result = subprocess.run(
-                ["ollama", "list"],
-                capture_output=True,
-                text=True,
-                timeout=5,
+                ["ollama", "list"], capture_output=True, text=True, timeout=5,
             )
-            if "qwen3.5" in result.stdout.lower():
-                steps.append({"step": "model_check", "status": "ok", "message": "qwen3.5 모델이 이미 설치되어 있습니다."})
+            if "qwen3.5" in result.stdout.lower() or "qwen2.5" in result.stdout.lower():
+                steps.append({"step": "model_check", "status": "ok",
+                               "message": "Qwen 모델이 설치되어 있습니다."})
             else:
-                steps.append({
-                    "step": "model_check",
-                    "status": "warning",
-                    "message": "qwen3.5:14b 모델이 없습니다. 터미널에서 'ollama pull qwen3.5:14b' 를 실행하세요.",
-                })
+                steps.append({"step": "model_check", "status": "warning",
+                               "message": "터미널에서 'ollama pull qwen3.5:9b' 또는 'ollama pull qwen2.5:7b'를 실행하세요."})
         except Exception as e:
             steps.append({"step": "model_check", "status": "error", "message": str(e)})
 
@@ -538,7 +715,7 @@ async def setup_ollama():
 
 @router.get("/debug-context")
 async def debug_context(q: str = "skala 메일 있어?", db: Session = Depends(get_db)):
-    """실제 빌드되는 컨텍스트 확인용 (개발/디버그 전용)"""
+    """컨텍스트 확인용 (개발/디버그 전용)"""
     schedule_ctx = build_schedule_context(db)
     google_ctx = _try_get_google_context(user_query=q)
     parts = [schedule_ctx]
@@ -546,10 +723,10 @@ async def debug_context(q: str = "skala 메일 있어?", db: Session = Depends(g
         parts.append(google_ctx)
     full_context = "\n\n".join(parts)
     return {
-        "query": q,
-        "schedule_ctx_len": len(schedule_ctx),
-        "google_ctx_len": len(google_ctx),
-        "google_ctx_present": bool(google_ctx),
-        "total_context_len": len(full_context),
-        "preview": full_context[:2000],  # 앞 2000자만 미리보기
+        "query":                q,
+        "schedule_ctx_len":     len(schedule_ctx),
+        "google_ctx_len":       len(google_ctx),
+        "google_ctx_present":   bool(google_ctx),
+        "total_context_len":    len(full_context),
+        "preview":              full_context[:2000],
     }
