@@ -94,9 +94,11 @@ _CHAT_SYSTEM = (
     "## 이메일·일정 답변 규칙 (가장 중요)\n"
     "- 오직 아래 [사용자 일정 및 Gmail 데이터] 섹션에 실제로 적혀 있는 내용만 답변하세요.\n"
     "- 데이터에 없는 이메일, 일정, 발신자, 날짜는 절대 만들어내지 마세요.\n"
-    "- 찾는 이메일이 데이터에 없으면: '해당 이메일이 없습니다.' 또는 '오늘 온 메일이 없습니다.'라고 하세요.\n"
+    "- 찾는 이메일이 데이터에 없으면: '해당 이메일이 없습니다.'라고 하세요.\n"
     "- 찾는 일정이 데이터에 없으면: '해당 일정이 없습니다.'라고 하세요.\n"
     "- 이메일과 일정을 혼동하지 마세요. 메일 질문에 일정 답변, 일정 질문에 메일 답변 금지.\n"
+    "- [Gmail 검색 결과] 섹션이 있으면 그 내용만 답변하고, [Gmail 최근 이메일] 섹션은 무시하세요.\n"
+    "- [Gmail 검색 결과] 섹션이 없으면 [Gmail 최근 이메일] 섹션으로 답변하세요.\n"
     "- 이메일 목록 형식:\n"
     "  [날짜] 발신자 | 제목\n"
     "  본문: (내용)\n"
@@ -456,6 +458,9 @@ def _extract_gmail_keywords(user_message: str) -> str:
         "전체", "본문", "전부", "모두", "다", "뭐라고", "왔어", "왔어요",
         "뭐야", "어떻게", "됐어", "됐나요", "합격", "불합격", "결과",
         "읽어줘", "읽어", "내용이", "내용은", "내용을",
+        # 의문형 어미 — 검색 키워드로 오탐 방지
+        "뭐왔어", "뭐왔어요", "왔나", "왔나요", "왔냐", "있냐",
+        "뭔지", "뭔데", "뭐있어", "뭐있나", "뭐가",
     }
 
     # 0) 일정 생성 요청은 Gmail 검색 불필요 (AI가 직접 __CREATE__ 태그 처리)
@@ -689,55 +694,51 @@ def _try_get_google_context(user_query: str = "") -> str:
         # ── Gmail ──
         try:
             gmail = build("gmail", "v1", credentials=creds)
+            seen_ids: set = set()
 
-            # 키워드가 있으면 키워드 검색 결과만 사용 (일반 받은편지함 제외)
-            # 키워드 없으면 최근 받은편지함 전체 표시
-            keywords = _extract_gmail_keywords(user_query) if user_query else ""
+            # 최근 주요 메일 — 광고·소셜·업데이트·포럼 명시적 제외
+            _INBOX_QUERY = (
+                "in:inbox"
+                " -category:promotions"
+                " -category:social"
+                " -category:updates"
+                " -category:forums"
+            )
+            # "오늘" 관련 쿼리일 때 당일 날짜 필터 추가
+            if user_query and any(kw in user_query for kw in ("오늘", "today")):
+                today_filter = datetime.now().strftime("%Y/%m/%d")
+                _INBOX_QUERY = f"after:{today_filter} " + _INBOX_QUERY
 
-            if keywords:
-                # ── 특정 발신자·주제 검색 ──────────────────────────────
-                keyword_seen: set = set()
-                keyword_results = _fetch_gmail_messages(
-                    gmail, keywords, 5, keyword_seen, include_body=True
-                )
-                lines.append("")
-                lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
-                if keyword_results:
-                    for m in keyword_results:
-                        lines.append(f"- [{m['date']}] {m['sender']}")
-                        lines.append(f"  제목: {m['subject']}")
-                        if m.get("body"):
-                            lines.append(f"  본문:\n{m['body']}")
-                else:
-                    lines.append(f"'{keywords}' 관련 이메일 없음")
-
+            recent = _fetch_gmail_messages(
+                gmail, _INBOX_QUERY, 7, seen_ids, include_body=True
+            )
+            lines.append("")
+            lines.append("=== Gmail 최근 이메일 (받은편지함, 광고/소셜 제외) ===")
+            if recent:
+                for m in recent:
+                    lines.append(f"- [{m['date']}] {m['sender']} | {m['subject']}")
+                    if m.get("body"):
+                        lines.append(f"  본문 요약: {m['body'][:300]}")
             else:
-                # ── 일반 최근 메일 조회 ─────────────────────────────────
-                seen_ids: set = set()
-                _INBOX_QUERY = (
-                    "in:inbox"
-                    " -category:promotions"
-                    " -category:social"
-                    " -category:updates"
-                    " -category:forums"
-                )
-                # "오늘" 관련 쿼리일 때 당일 날짜 필터 추가
-                if user_query and any(kw in user_query for kw in ("오늘", "today")):
-                    today_filter = datetime.now().strftime("%Y/%m/%d")
-                    _INBOX_QUERY = f"after:{today_filter} " + _INBOX_QUERY
+                lines.append("최근 이메일 없음")
 
-                recent = _fetch_gmail_messages(
-                    gmail, _INBOX_QUERY, 7, seen_ids, include_body=True
-                )
-                lines.append("")
-                lines.append("=== Gmail 최근 이메일 (받은편지함, 광고/소셜 제외) ===")
-                if recent:
-                    for m in recent:
-                        lines.append(f"- [{m['date']}] {m['sender']} | {m['subject']}")
-                        if m.get("body"):
-                            lines.append(f"  본문 요약: {m['body'][:300]}")
-                else:
-                    lines.append("최근 이메일 없음")
+            if user_query:
+                keywords = _extract_gmail_keywords(user_query)
+                if keywords:
+                    keyword_seen: set = set()
+                    keyword_results = _fetch_gmail_messages(
+                        gmail, keywords, 5, keyword_seen, include_body=True
+                    )
+                    lines.append("")
+                    lines.append(f"=== Gmail 검색 결과 (키워드: {keywords}) ===")
+                    if keyword_results:
+                        for m in keyword_results:
+                            lines.append(f"- [{m['date']}] {m['sender']}")
+                            lines.append(f"  제목: {m['subject']}")
+                            if m.get("body"):
+                                lines.append(f"  본문:\n{m['body']}")
+                    else:
+                        lines.append(f"'{keywords}' 관련 이메일 없음")
 
         except Exception as gmail_err:
             lines.append(f"=== Gmail 로드 실패: {gmail_err} ===")
