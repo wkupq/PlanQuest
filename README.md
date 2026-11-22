@@ -157,6 +157,7 @@ __CREATE__:{"title":"운동","time":"07:00","days":[0,2,4],"repeat":true}
 | LLM 출력을 통한 비정상 데이터 저장 | 필드 길이·형식·범위 검증, 실패 시 롤백 | `chat.py` (`_create_habit_from_data`) |
 | 로그에 개인정보 평문 저장 | 카드번호·주민등록번호·전화번호 정규식 마스킹 | `project-files/masking.py` |
 | 데이터 장기 보관 | 영역별 TTL 정책으로 만료 데이터 삭제 | `project-files/memory.py` |
+| BM25 인덱스 파일 변조 | 저장 시 HMAC-SHA256 서명을 `.sig` 파일로 기록, 로드 시 `hmac.compare_digest`로 검증 후 역직렬화 | `project-files/rag_pipeline.py` (`SparseRetriever`) |
 
 **메모리 TTL 정책**
 
@@ -184,6 +185,8 @@ query ─┬─> DenseRetriever  (ChromaDB, BAAI/bge-m3)  ── top 20 ─┐
 ```text
 RRF(d) = Σ  1 / (k + rank_i(d))      k = 60
 ```
+
+BM25 인덱스는 pickle 파일로 저장되는데, 변조된 pickle을 그대로 읽으면 검색 결과 오염과 임의 코드 실행 위험이 있습니다. 그래서 저장할 때 HMAC-SHA256 서명을 함께 기록하고, 읽기 전에 서명이 일치하는지 확인합니다. 서명 키는 환경변수 `PLANQUEST_BM25_HMAC_KEY`로 지정합니다.
 
 ### 3.5 LoRA 학습 데이터 파이프라인
 
