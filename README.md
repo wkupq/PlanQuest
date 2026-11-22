@@ -1,347 +1,350 @@
-# 🌳 Plan-Quest (습관의 숲)
+# PlanQuest
 
-> **AI 비서와 함께 자라는 정원** — 습관 관리를 게임으로 만든 캡스톤 프로젝트
+**On-device AI Personal Scheduler** — 로컬 LLM 기반 자연어 일정 등록 · Gmail/Google Calendar 연동 · 게임화 습관 관리
 
-일정을 등록하면 씨앗이 심어지고, 완료할 때마다 나무가 자라며, 하트를 모아 귀여운 캐릭터를 정원에 배치하는 게임형 습관 관리 앱. 백엔드는 LangChain + Ollama 기반 로컬 AI 에이전트로 작동.
-
-**GitHub**: https://github.com/wkupq/Plan-quest-UI
+`Python` `FastAPI` `React` `SQLite` `Ollama` `Qwen2.5-7B` `ChromaDB` `BM25` `Google OAuth2`
 
 ---
 
-## 🎮 게임 흐름
+## 목차
 
+1. [프로젝트 개요](#1-프로젝트-개요)
+2. [시스템 아키텍처](#2-시스템-아키텍처)
+3. [핵심 기술 상세](#3-핵심-기술-상세)
+4. [트러블슈팅](#4-트러블슈팅)
+5. [한계와 향후 과제](#5-한계와-향후-과제)
+6. [기술 스택](#6-기술-스택)
+7. [저장소 구조](#7-저장소-구조)
+8. [실행 방법](#8-실행-방법)
+9. [API 명세](#9-api-명세)
+10. [팀 구성](#10-팀-구성)
+
+---
+
+## 1. 프로젝트 개요
+
+### 문제 정의
+
+일정·메일·습관 데이터는 개인 정보 밀도가 가장 높은 데이터입니다. 그런데 기존 AI 비서는 이 데이터를 외부 클라우드 LLM으로 전송해야 동작합니다. 반대로 로컬에서 동작하는 습관 관리 앱은 자연어 인터페이스가 없어 사용자가 폼을 직접 채워야 합니다.
+
+### 접근 방식
+
+PlanQuest는 **Qwen2.5 7B 모델을 Ollama로 사용자 PC에서 직접 구동**합니다. 대화, 일정, 메일 본문은 디바이스 밖으로 나가지 않으며(Google API 호출 제외), 사용자는 "내일 오전 7시 운동 추가해줘" 같은 한 문장으로 일정을 DB에 등록할 수 있습니다. 등록한 습관을 완료하면 하트 포인트가 쌓이고, 이를 게임 요소(캐릭터 상점, 정원 배치)에 사용해 지속 동기를 만듭니다.
+
+### 기존 서비스와의 비교
+
+| 서비스 | 로컬 AI | 게임화 | 자연어 일정 등록 |
+|--------|:------:|:------:|:---------------:|
+| Habitica | X | O | X |
+| Open Claw | O | X | O |
+| 습관의 숲 | O (로컬 저장) | O | X |
+| **PlanQuest** | **O** | **O** | **O** |
+
+---
+
+## 2. 시스템 아키텍처
+
+### 2.1 레이어 구성
+
+![PlanQuest 시스템 아키텍처](docs/architecture.png)
+
+| 레이어 | 구성 요소 | 역할 |
+|--------|-----------|------|
+| 프론트엔드 | React 18 | 채팅 UI(SSE 수신), 일정·루틴 관리, 캘린더 히트맵, 상점·배치도 |
+| 백엔드 | FastAPI | REST API, SSE 스트리밍, 의도 분류, `__CREATE__` 태그 파싱, 입력 검증 |
+| AI 엔진 | Ollama + Qwen2.5 7B | 로컬 추론. 일정 DB·Gmail·RAG 컨텍스트를 받아 응답 생성 |
+| 검색 | ChromaDB + BM25 + Reranker | Dense/Sparse 병렬 검색 후 RRF 병합, bge-reranker 재순위 |
+| 데이터 | SQLite | 습관·완료 기록·사용자·게임 상태, 영역별 TTL 메모리 |
+| 외부 연동 | Gmail API, Google Calendar API | OAuth2 인증, 7일 이내 일정 조회, 받은편지함·키워드 메일 검색 |
+
+### 2.2 컴포넌트 흐름
+
+```mermaid
+flowchart LR
+    U[React 채팅 UI] -->|POST /api/chat/stream| R[chat.py 라우터]
+
+    R --> I{의도 분류}
+    I -->|일정 생성| C[비스트리밍 추론<br/>__CREATE__ 파싱]
+    I -->|조회/대화| S[SSE 토큰 스트리밍]
+
+    R --> X[컨텍스트 빌더]
+    X --> DB[(SQLite<br/>습관/일정)]
+    X -->|트리거 키워드 존재 시| G[Gmail / Calendar API]
+    X --> RAG[하이브리드 RAG]
+
+    C --> L[Ollama<br/>Qwen2.5 7B]
+    S --> L
+    C -->|검증 통과 시| DB
+    R -->|대화 로그| LORA[LoRA 학습 데이터<br/>Alpaca JSON]
 ```
-일정 추가 → 🌰 씨앗 심어짐 (배치도)
-   ↓
-일정 완료 → 🌱→🌿→🌳 나무 성장 (4단계)
-   ↓
-나무 클릭 → ❤️ 하트 수확
-   ↓
-🛍️ 상점에서 캐릭터 구매 (하트 사용)
-   ↓
-🎒 인벤토리 → 배치도에 캐릭터 배치
-   ↓
-배치된 캐릭터가 시간이 지나면 자동으로 하트 생성 (등급별 차등)
-   ↓
-모은 하트로 더 비싼 캐릭터 구매 → 정원 꾸미기
+
+### 2.3 일정 등록 요청 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant User as 사용자
+    participant FE as React
+    participant API as FastAPI (chat.py)
+    participant LLM as Ollama (Qwen2.5 7B)
+    participant DB as SQLite
+
+    User->>FE: "내일 오전 7시 운동 추가해줘"
+    FE->>API: POST /api/chat/stream
+    API->>API: 생성 의도 키워드 매칭 (is_create = true)
+    API->>DB: 현재 일정 컨텍스트 조회
+    API->>LLM: 시스템 프롬프트 + 컨텍스트 + 사용자 메시지
+    LLM-->>API: 응답 본문 + __CREATE__:{"title":"운동","time":"07:00",...}
+    alt 태그 파싱 성공
+        API->>API: JSON 파싱 → 필드 검증
+    else 태그 누락 / JSON 오류
+        API->>API: NLP 폴백으로 사용자 문장에서 직접 추출
+    end
+    API->>DB: Habit + TreeOnMap 저장 (실패 시 rollback)
+    API-->>FE: SSE로 정제된 응답 + 등록 결과 전송
+    FE-->>User: 응답 표시, 배치도에 씨앗 생성
 ```
 
 ---
 
-## ⚡ 빠른 시작
+## 3. 핵심 기술 상세
 
-### 1. 백엔드
-```powershell
-cd backend
-pip install -r requirements.txt
-python migrate_db.py        # DB 스키마 마이그레이션
-python main.py              # http://127.0.0.1:8000
+### 3.1 자연어 → DB 등록 파이프라인
+
+`PlanQuest_App/backend/routers/chat.py`
+
+LLM 응답은 자유 텍스트라서 그대로는 DB에 넣을 수 없습니다. 그래서 시스템 프롬프트에서 **일정 생성 요청일 때만 응답 마지막에 구조화 태그를 붙이도록** 규칙을 정의했습니다.
+
+```text
+__CREATE__:{"title":"운동","time":"07:00","days":[0,2,4],"repeat":true}
 ```
 
-### 2. 프론트엔드 (다른 터미널)
-```powershell
-cd frontend
-npm install
-npm start                   # http://localhost:3000
+처리 단계는 다음과 같습니다.
+
+| 단계 | 처리 내용 | 설계 이유 |
+|------|-----------|-----------|
+| 1. 의도 분류 | 명시적 명령형 키워드("추가해줘", "잡아줘", "등록해주세요" 등)로 생성 요청 판별 | "추가해야 할", "등록해서" 같은 문장에서 오탐이 발생해 어간 단독 매칭을 금지 |
+| 2. 추론 방식 분기 | 생성 요청은 비스트리밍으로 전체 응답 수신, 그 외는 토큰 단위 SSE | 태그는 응답 끝에 오므로 전체 문자열이 있어야 파싱 가능 |
+| 3. 태그 파싱 | 정규식으로 태그를 찾아 `json.loads`, 사용자 화면에서는 태그 제거 | 내부 제어 신호가 사용자에게 노출되지 않도록 분리 |
+| 4. NLP 폴백 | 태그가 없거나 JSON이 깨지면 사용자 문장에서 제목·시간·요일을 직접 추출. 제목이 없으면 "새 일정"으로 저장 | 7B 모델이 태그를 빠뜨리는 경우가 잦아 등록 실패를 줄이기 위함 |
+| 5. 검증 후 저장 | 아래 검증 규칙 통과 시 `Habit`과 배치도용 `TreeOnMap`을 한 트랜잭션으로 저장 | LLM 출력은 신뢰할 수 없는 입력으로 간주 |
+
+**LLM 출력 검증 규칙** (`_create_habit_from_data`)
+
+| 필드 | 규칙 |
+|------|------|
+| `title` | 공백 제거 후 최대 100자, 비어 있으면 저장 거부 |
+| `time` | `^\d{2}:\d{2}$` 형식만 허용, 그 외는 시간 없음으로 처리 |
+| `days` | 0~6 범위 정수만 허용, 중복 제거 후 정렬 |
+| DB 오류 | 예외 발생 시 `rollback` 후 `None` 반환, 사용자에게 실패 안내 |
+
+메일 기반 요청("메일에서 일정 추가해줘")은 사용자 문장 안에 일정 정보가 없으므로 NLP 폴백을 건너뛰어, 잘못된 일정이 생성되는 것을 막습니다.
+
+### 3.2 Gmail / Calendar 컨텍스트 주입
+
+모든 메시지마다 Google API를 호출하면 응답이 느려지고 불필요한 메일이 컨텍스트를 오염시킵니다. 그래서 조회 여부를 먼저 판단합니다.
+
+- **호출 조건**: 인사말·짧은 잡담은 정규식으로 걸러 호출하지 않고, "메일", "일정", "오늘", "찾아봐" 등 트리거 키워드가 있을 때만 호출
+- **받은편지함 쿼리**: `in:inbox -category:promotions -category:social -category:updates -category:forums`로 광고·소셜 메일 제외
+- **날짜 필터**: 질문에 "오늘"이 포함되면 `after:YYYY/MM/DD`를 붙여 당일 메일만 조회
+- **키워드 검색**: 사용자 문장에서 조사·불용어(`skip_words`)를 제거한 키워드로 별도 검색
+- **컨텍스트 분리**: "최근 이메일"과 "키워드 검색 결과"를 서로 다른 섹션으로 주입해, 모델이 두 결과를 섞어 답하는 문제를 줄임
+
+### 3.3 보안 설계
+
+| 위협 | 대응 | 구현 위치 |
+|------|------|-----------|
+| 메일 본문 속 악성 지시문(프롬프트 인젝션) | 외부 데이터를 `<external_content>` 태그로 감싸 시스템 지시와 분리, 위험 패턴 제거 | `project-files/security.py` (`build_safe_prompt`, `sanitize_input`) |
+| LLM 출력을 통한 비정상 데이터 저장 | 필드 길이·형식·범위 검증, 실패 시 롤백 | `chat.py` (`_create_habit_from_data`) |
+| 로그에 개인정보 평문 저장 | 카드번호·주민등록번호·전화번호 정규식 마스킹 | `project-files/masking.py` |
+| 데이터 장기 보관 | 영역별 TTL 정책으로 만료 데이터 삭제 | `project-files/memory.py` |
+| BM25 인덱스 파일 변조 | 저장 시 HMAC-SHA256 서명을 `.sig` 파일로 기록, 로드 시 `hmac.compare_digest`로 검증 후 역직렬화 | `project-files/rag_pipeline.py` (`SparseRetriever`) |
+
+**메모리 TTL 정책**
+
+| 영역 | 보관 기간 |
+|------|----------|
+| 대화 (conversation) | 30일 |
+| 이메일 (email) | 7일 |
+| 일정 (calendar) | 60일 |
+| 루틴 (routine) | 90일 |
+
+### 3.4 하이브리드 RAG
+
+`project-files/rag_pipeline.py`
+
+벡터 검색만 사용하면 'SKALA', 'SKCT'처럼 학습 데이터에 거의 없는 고유명사가 의미 벡터로 잘 표현되지 않아 검색이 실패했습니다. 키워드 일치에 강한 BM25를 병렬로 실행해 이를 보완합니다.
+
+```text
+query ─┬─> DenseRetriever  (ChromaDB, BAAI/bge-m3)  ── top 20 ─┐
+       │                                                       ├─> RRF (k=60) ─> Reranker (bge-reranker-v2-m3) ─> top 5
+       └─> SparseRetriever (BM25Okapi)               ── top 20 ─┘
 ```
 
-### 3. (선택) Ollama AI
-```powershell
-ollama pull qwen2.5:latest
-ollama pull nomic-embed-text    # RAG 메모리 임베딩
-ollama serve
+두 검색기는 점수 스케일이 달라 단순 합산이 불가능합니다. RRF는 점수 대신 **순위**만 사용합니다.
+
+```text
+RRF(d) = Σ  1 / (k + rank_i(d))      k = 60
 ```
+
+BM25 인덱스는 pickle 파일로 저장되는데, 변조된 pickle을 그대로 읽으면 검색 결과 오염과 임의 코드 실행 위험이 있습니다. 그래서 저장할 때 HMAC-SHA256 서명을 함께 기록하고, 읽기 전에 서명이 일치하는지 확인합니다. 서명 키는 환경변수 `PLANQUEST_BM25_HMAC_KEY`로 지정합니다.
+
+### 3.5 LoRA 학습 데이터 파이프라인
+
+앱 사용 중 발생한 대화를 `instruction / input / output` 구조의 Alpaca 포맷으로 변환합니다. 변환 시 제어 문자와 중복 공백·줄바꿈을 정리합니다(`data_formatter.py`).
+
+```bash
+cd PlanQuest_App/project-files
+python data_pipeline.py export
+# 출력: lora_data/processed/alpaca_train.json
+```
+
+학습 코드(`lora_trainer.py`, Unsloth/PEFT)까지 준비했으며, 실제 파인튜닝은 GPU 자원 문제로 아직 진행하지 않았습니다.
 
 ---
 
-## 🎯 주요 기능
+## 4. 트러블슈팅
 
-### 🌱 핵심 게임 시스템
-- **아이소메트릭 배치도** (7x5 = 35 타일)
-- **씨앗/나무 4단계 성장** (씨앗 → 새싹 → 어린나무 → 큰나무, 사용자 일러스트 PNG 지원)
-- **씨앗 클릭** → 일정 정보 모달 (반복 요일, 시간, streak, 다음 알람 카운트다운)
-- **시간 카운트다운 배지** 각 나무 위에 1분마다 갱신
-- **빌보드 렌더링** — 캐릭터가 항상 화면에 똑바로 (진짜 2.5D)
-
-### 🐾 캐릭터 시스템 (14마리)
-| 등급 | 수 | 시간당 하트 | 배지 색 |
-|------|---:|-----------:|---------|
-| Common | 8 | 6h / 1하트 | — |
-| Rare | 3 | 4h / 2하트 | 🔵 파랑 |
-| **Unique** | 3 | 3h / 3하트 | 🟣 보라 |
-
-- **시간당 하트 자동 생성** — 배치된 캐릭터마다 등급별 주기로 ❤️ 누적
-- **수확** — 캐릭터 클릭 → 모달에서 하트 받기
-- **이동/회수** — 다른 칸으로 옮기거나 인벤토리로 회수 (보유 유지)
-- **이름 자동 매칭 + 자동 폴백** — PNG 없으면 emoji 사용
-
-### 🤖 AI 에이전트 (LangChain ReAct + Qwen2.5)
-사용자의 자연어 질문에 18개 도구 자동 선택 → 답변.
-
-| 카테고리 | 도구 수 | 예시 |
-|---------|--------:|------|
-| 습관 | 3 | "내 일정 뭐야?", "운동 완료했어" |
-| 캘린더 | 3 | "내일 회의 있어?", "주간 일정" |
-| 이메일 | 3 | "중요한 메일", "이메일 분류" |
-| 게임 상태 | 6 | "정원 누가 있어?", "뭐 사면 좋을까?" |
-| 완료 기록 분석 | 3 | "이번 주 몇 번 했어?", "내가 언제 잘해?" |
-
-### 💬 슬래시 커맨드 (LLM 우회 — 즉시 실행)
-```
-/help, /hearts, /summary, /today, /list, /history,
-/pattern, /stats, /suggest, /add <제목>, /complete <키워드>
-```
-
-### 🧠 RAG 메모리 (ChromaDB)
-- 모든 대화 자동 저장 → 벡터 검색으로 과거 맥락 자동 주입
-- **자동 카테고리화** (habit/preference/schedule/game_event/emotion/personal)
-- **임계값 엔진** — 중요도 낮고 오래된 메모리 자동 정리
-
-### 📅 캘린더 (히트맵 + 디테일)
-- 월별 5단계 히트맵 (완료 수에 따라 색 진해짐)
-- 날짜 클릭 → 예정/완료 일정 + 받은 하트 표시
-- 통계: 달성일, 총 완료, 🔥 연속, 받은 하트
-
-### 📈 AI 인사이트 리포트 (LLM)
-- 주간/월간 자연어 분석 ("강한 요일은 수요일이에요...")
-- 통계 + 격려 + 다음 주 제안
-- LLM 없을 때 템플릿 폴백
-
-### 🔔 WebSocket 실시간 알림
-- 일정 알람 시간 도달 시 자동 푸시
-- 능동 추천 변화 시 푸시 (폴링 X)
-- `ws://localhost:8000/ws/notifications`
-
-### 💡 자동 일정 추천 + 빈 시간대
-- 사용자 패턴 + 라이브러리 기반 추천 (Top N)
-- 빈 시간대 분석 (아침/낮/저녁/밤)
-
-### 👍 응답 피드백 학습
-- 사용자가 AI 응답에 좋다/나쁘다 평가
-- 메모리에 importance 다르게 저장 → 다음 응답에 반영
+| 문제 | 원인 | 해결 | 결과 |
+|------|------|------|------|
+| 자연어로 요청해도 일정이 등록되지 않음 | 7B 모델이 `__CREATE__` 태그를 누락하거나 JSON 형식을 깨뜨림 | 태그 규칙을 시스템 프롬프트에 예시와 함께 명시, 파싱 실패 시 NLP 폴백 추가 | 단순 요청은 안정적으로 등록 |
+| 일정 생성이 아닌 문장에서 일정이 생성됨 | "추가해", "등록해" 어간 매칭으로 "추가해야 할 일 알려줘"까지 생성 요청으로 분류 | 명시적 명령형 구문만 키워드로 허용 | 오탐 감소 |
+| 제목이 없어 저장 자체가 실패 | 사용자가 시간만 말하는 경우 제목 필드가 비어 있음 | 폴백 단계에서 기본 제목 "새 일정" 부여 | 등록 후 사용자가 제목 수정 가능 |
+| 메일 질문에 엉뚱한 메일로 답변 | 최근 메일과 키워드 검색 결과를 한 덩어리로 주입 | 두 결과를 별도 섹션으로 분리 | 질문과 관련된 메일 기준으로 답변 |
+| 키워드 검색 결과가 무관한 메일로 채워짐 | "메일", "있어", "알려줘" 같은 단어까지 검색어로 사용 | `skip_words` 불용어 목록으로 제거 | 검색 정확도 개선 |
+| "오늘 온 메일"에 과거 메일이 섞임 | 받은편지함 쿼리에 날짜 조건 없음 | "오늘" 감지 시 `after:` 날짜 필터 추가 | 당일 메일만 조회 |
+| 고유명사 검색 실패 | 벡터 임베딩이 신조어·고유명사를 잘 표현하지 못함 | BM25 병렬 검색 + RRF 병합 | 키워드 일치 문서 검색 가능 |
 
 ---
 
-## 🛠️ 기술 스택
+## 5. 한계와 향후 과제
 
-### 백엔드
-- **FastAPI 0.104** + Uvicorn + Pydantic
-- **SQLAlchemy 2.0** + SQLite
-- **LangChain 0.1.13** + Qwen2.5 (Ollama 로컬)
-- **ChromaDB 0.4.24** + nomic-embed-text (벡터 메모리)
-- **WebSocket** (실시간 푸시)
-- Google API 스캐폴드 (Calendar/Gmail OAuth)
-
-### 프론트엔드
-- **React 18** + Hooks
-- Axios (HTTP) + WebSocket
-- CSS 변환 기반 아이소메트릭 + 빌보드 합성
+- **긴 자연어 입력에서의 추론 정확도**: 짧고 명확한 요청은 키워드 분류와 폴백으로 처리되지만, 여러 조건이 섞인 긴 문장에서는 7B 모델이 태그를 누락하거나 필드를 잘못 채우는 경우가 남아 있습니다. 규칙과 키워드를 더 늘리는 방식으로는 한계가 있다고 판단했습니다.
+- **해결 방향**: 이미 구축한 LoRA 데이터 파이프라인으로 실제 사용 로그를 학습 데이터로 만들고, 일정 추출 태스크에 특화된 파인튜닝을 적용할 계획입니다.
+- **테스트 범위**: LLM 응답에 의존하는 경로는 단위 테스트로 검증하기 어려워, 태그 파싱·검증·폴백 함수 단위로 분리해 테스트를 확장할 예정입니다.
 
 ---
 
-## 📁 프로젝트 구조
+## 6. 기술 스택
 
-```
-Plan-quest/
-├── backend/
-│   ├── main.py                    # FastAPI 앱 + lifespan
-│   ├── agent_core.py              # LangChain ReAct 에이전트 (18 도구)
-│   ├── memory_engine.py           # ChromaDB RAG 메모리
-│   ├── proactive_ai.py            # 능동 추천 + 패턴 분석
-│   ├── slash_commands.py          # 챗봇 슬래시 커맨드 12개
-│   ├── ollama_manager.py          # Ollama 자동 시작/종료
-│   ├── models.py                  # DB 모델 (UserProfile, Habit, HabitCompletion,
-│   │                              #  ShopItem, OwnedItem, PlacedItem, TreeOnMap, UserMemory)
-│   ├── schemas.py                 # Pydantic 스키마
-│   ├── database.py                # SQLite 연결
-│   ├── seed_data.py               # 상점 초기 데이터 (14 캐릭터)
-│   ├── migrate_db.py              # DB 스키마 마이그레이션
-│   │
-│   ├── routers/
-│   │   ├── user.py                # /api/user (+ 디버그용 dev/add-hearts)
-│   │   ├── habits.py              # /api/habits CRUD + complete
-│   │   ├── trees.py               # /api/trees + harvest + move
-│   │   ├── shop.py                # /api/shop + buy
-│   │   ├── placement.py           # /api/placed-items + move + harvest
-│   │   ├── chat.py                # /api/chat/stream (SSE) + 슬래시 dispatch
-│   │   ├── memory.py              # /api/memory/* (RAG)
-│   │   ├── proactive.py           # /api/proactive/{suggestions,insights,context}
-│   │   ├── calendar.py            # /api/calendar/{month,day} (히트맵)
-│   │   ├── insights.py            # /api/insights/{weekly,monthly,quick}
-│   │   ├── notifications.py       # WS /ws/notifications
-│   │   ├── suggestions.py         # /api/suggestions/{habits,empty-slots,best-time}
-│   │   └── feedback.py            # /api/feedback/{rate,recent,stats}
-│   │
-│   ├── tools/                     # AI 에이전트 도구
-│   │   ├── habit_tools.py         # 3개
-│   │   ├── calendar_tools.py      # 3개 (Google Calendar fallback → mock)
-│   │   ├── email_tools.py         # 3개 (Gmail API fallback → mock)
-│   │   └── game_state_tools.py    # 9개 (게임 상태 + 완료 기록 분석)
-│   │
-│   ├── integrations/              # 외부 연동 스캐폴드
-│   │   ├── google_calendar.py     # OAuth 흐름
-│   │   ├── email_client.py        # Gmail API + IMAP fallback
-│   │   └── README_연동가이드.md
-│   │
-│   ├── test_d_features.py         # 13개 통합 검증
-│   │
-│   └── (테스트/관리 스크립트)
-│       ├── reset_shop.py          # 상점 wipe + 재등록
-│       ├── add_new_chars.py       # 캐릭터 증분 추가
-│       ├── rename_chars.py        # 캐릭터 이름 갱신
-│       ├── update_rarities.py     # 등급 갱신
-│       ├── reset_owned_double_price.py  # 보유 초기화 + 가격 ×2
-│       └── add_hearts.py          # 테스트용 하트 직접 추가
+| 분류 | 기술 |
+|------|------|
+| Backend | Python 3.11, FastAPI, Uvicorn, SQLAlchemy, SQLite, APScheduler |
+| LLM | Ollama, Qwen2.5 7B |
+| Retrieval | ChromaDB, sentence-transformers (bge-m3), rank-bm25, bge-reranker-v2-m3 |
+| Fine-tuning | Unsloth, PEFT (LoRA), Alpaca 포맷 데이터셋 |
+| External API | Gmail API, Google Calendar API, OAuth2 |
+| Frontend | React 18, Axios, Server-Sent Events |
+| Test | pytest |
+
+---
+
+## 7. 저장소 구조
+
+```text
+PlanQuest/
+├── PlanQuest_App/
+│   └── backend/routers/chat.py   # 자연어 일정 등록 · Gmail 컨텍스트 · 의도 분류 (통합 최신본)
 │
-└── frontend/
-    ├── public/
-    │   └── images/
-    │       ├── characters/        # 14 캐릭터 PNG
-    │       └── seeds/             # 새싹 PNG (사용자 일러스트)
-    │
-    └── src/
-        ├── App.js                 # 메인 + 모달 라우팅
-        ├── api.js                 # Axios 함수들
-        │
-        ├── components/
-        │   ├── IsometricMap.js    # 배치도 + 빌보드 레이어
-        │   ├── TreeIcon.js        # 4단계 나무 SVG/PNG
-        │   ├── CharacterInfoModal.js  # 캐릭터 액션 (이동/회수/수확)
-        │   ├── TreeInfoModal.js   # 나무 정보 + 카운트다운 + 수확/이동/삭제
-        │   ├── CalendarPanel.js   # 히트맵 + 날짜 디테일
-        │   ├── ChatDashboard.js   # SSE 스트리밍 채팅
-        │   ├── HabitPanel.js      # 일정 목록
-        │   ├── HabitForm.js       # 일정 추가
-        │   ├── ShopPanel.js       # 상점 (등급 배지)
-        │   ├── InventoryPanel.js  # 인벤토리
-        │   ├── RoutinePanel.js    # 달성률 대시보드
-        │   ├── OllamaPopup.js     # Ollama 자동 설치 안내
-        │   └── Toast.js
-        │
-        ├── utils/timeUtils.js     # 다음 알람 카운트다운
-        └── styles/global.css      # 아이소메트릭 + 빌보드 CSS
+├── backend/                      # FastAPI 서버 (게임 · 습관 · 캘린더 API)
+│   ├── main.py
+│   ├── models.py / schemas.py / database.py
+│   ├── routers/                  # habits, trees, shop, placement, calendar, chat, memory ...
+│   ├── tools/                    # 에이전트 도구 (habit, calendar, email, game_state)
+│   └── integrations/             # Google Calendar / Gmail OAuth
+│
+├── frontend/                     # React 앱 (채팅, 배치도, 상점, 캘린더 히트맵)
+│
+├── project-files/                # AI 엔진
+│   ├── rag_pipeline.py           # Dense · Sparse · RRF · Reranker
+│   ├── security.py               # 외부 데이터 격리, 입력 정화
+│   ├── masking.py                # 개인정보 마스킹
+│   ├── memory.py                 # TTL 메모리
+│   ├── data_formatter.py         # Alpaca 포맷 변환
+│   └── lora_trainer.py           # LoRA 학습
+│
+├── db/                           # 인덱서, 백업, 마이그레이션(Alembic)
+└── docs/architecture.png
 ```
 
 ---
 
-## 🔌 API 요약
+## 8. 실행 방법
 
-### 게임
-```
-GET  /api/user
-POST /api/habits                          GET /api/habits
-POST /api/habits/{id}/complete            DELETE /api/habits/{id}
-GET  /api/trees
-POST /api/trees/{id}/harvest              PATCH /api/trees/{id}/position
-GET  /api/shop                            POST /api/shop/{id}/buy
-GET  /api/placed-items                    POST /api/placed-items
-PATCH /api/placed-items/{id}/position     POST /api/placed-items/{id}/harvest
-DELETE /api/placed-items/{id}
-```
+### 요구 사항
 
-### AI / 분석
-```
-POST /api/chat/stream                     # SSE 채팅 + 슬래시 커맨드
-GET  /api/chat/tools                      # 등록된 도구 목록
+- Python 3.11 이상, Node.js 18 이상
+- [Ollama](https://ollama.com) 설치
+- Gmail/Calendar 연동 시 Google Cloud Console에서 발급한 OAuth 클라이언트 정보 (`backend/integrations/README_연동가이드.md` 참고)
 
-POST /api/memory/{add,search,auto-add,recategorize}
-GET  /api/memory/stats                    POST /api/memory/cleanup
-DELETE /api/memory/{chroma_id}
-
-GET  /api/proactive/{suggestions,insights,context}
-GET  /api/calendar/{month,day}
-GET  /api/insights/{weekly,monthly,quick}
-GET  /api/suggestions/{habits,empty-slots,best-time}
-POST /api/feedback/rate                   GET /api/feedback/{recent,stats}
-WS   /ws/notifications                    # 실시간 푸시
-```
-
----
-
-## 👥 팀 구성 (캡스톤)
-
-| 팀원 | 모듈 | 핵심 과제 | 주차 |
-|------|------|-----------|------|
-| **A** | `ollama_runner` · `agent` · `rag/` · `LoRA(train/merge/GGUF)` | context RAG 3단계 연결 + GIL 우회 + GGUF 변환 | W1(RAG) · W4(데이터) · W5(LoRA) |
-| **B** | `calendar` · `email` · `OAuth` · `masking` · `tenacity` · 설치가이드 | OAuth 토큰 갱신 + 증분 동기화 + Rate Limit | W1(API) · W2(연동) · W3(보안) |
-| **C** | `memory` · `scheduler` · `ChromaDB` · `BM25` · `SQLCipher` · `Alembic` · `backup` | 임계값 로직 + 정합성 검사 + SQLCipher+Alembic 연동 | W1(DB) · W2(메모리) · W3(보안) · W5(백업) |
-| **D** (본 저장소 담당) | `dashboard` · `chatbot` · `game_screen` · `game/` · `PyInstaller` · `ollama_manager` | 패키징 의존성 충돌 + 게임 UI 성능 | W1(UI) · W3~4(게임) · W5(패키징) |
-
-### D 역할 진척도 (W1 → W6)
-- ✅ W1: 게임 화면 / 대시보드 / 챗봇 UI 기본 구조
-- ✅ W2: 일정 관리 + 나무 성장 시스템 + SSE 스트리밍 채팅
-- ✅ W3~4: 게임 화면 (아이소메트릭 배치도 7×5, 빌보드 렌더링, 캐릭터/나무 모달)
-- ✅ W3~4: 챗봇 (Ollama 자동 관리, agent 통합, 슬래시 커맨드 12개)
-- ✅ W5: 캘린더 히트맵 + 인사이트 대시보드 + WebSocket 알림
-- ✅ W5~: `ollama_manager` 자동 시작/종료, graceful shutdown
-- ✅ W6: 자동 일정 추천 + 응답 피드백 시스템 + 14 캐릭터 등급 시스템
-- ⏳ W5~ 진행 중: PyInstaller 패키징 + 의존성 충돌 해결
-
-상세 문서:
-- [`WEEK3_ROADMAP.md`](WEEK3_ROADMAP.md), [`WEEK3-4_ROADMAP_D.md`](WEEK3-4_ROADMAP_D.md)
-- [`WEEK4_COMPLETE_D.md`](WEEK4_COMPLETE_D.md)
-- [`WEEK5_COMPLETE_D.md`](WEEK5_COMPLETE_D.md)
-- [`WEEK6_COMPLETE_D.md`](WEEK6_COMPLETE_D.md)
-- [`AGENT_ARCHITECTURE.md`](AGENT_ARCHITECTURE.md)
-
----
-
-## 🧪 통합 검증
+### 설치
 
 ```powershell
-cd backend
-python test_d_features.py
+ollama pull qwen2.5:7b
+
+cd PlanQuest_App\backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+pip install chromadb rank_bm25 sentence-transformers
+
+cd ..\frontend
+npm install
 ```
 
-13개 카테고리 자동 점검:
-1. DB 모델 / 마이그레이션
-2. AI 에이전트 도구 18개
-3. 게임 상태 도구
-4. 능동 추천 + 패턴 분석
-5. RAG 메모리
-6. Google Calendar/Email (미연동 시 ⚠️)
-7. 캘린더 API
-8. 인사이트 리포트 (W5)
-9. 메모리 자동 카테고리화 (W5)
-10. WebSocket 모듈 (W5)
-11. 자동 일정 추천 (W6)
-12. 슬래시 커맨드 (W6)
-13. 피드백 시스템 (W6)
+### 실행 (터미널 3개)
 
----
-
-## 🎯 게임 플레이 팁
-
-1. **첫 일정** 등록 → 씨앗 심김 → 매일 완료 → 나무 자람
-2. **연속 7일** 달성하면 보너스 하트 +1
-3. 첫 캐릭터로 **불꽃포메 (6H)** 또는 **카피바라 (8H)** 추천
-4. 캐릭터 배치 후 **시간 지나면 ❤️ 자동 누적** — 자주 들어와서 수확
-5. **유니크 등급** (별자리양 24H, 우주거북 24H, 무지개여우 20H) 은 시간당 3하트로 최고 가성비
-6. **챗봇에 `/suggest`** 입력하면 AI 가 다음 일정 추천
-
-테스트용 명령:
 ```powershell
-python backend/add_hearts.py 100         # 100 하트 즉시 추가
-python backend/add_hearts.py --level 5    # 레벨 5로
-python backend/add_hearts.py --reset      # 0 으로 리셋
+# 1. LLM 서버
+ollama serve
+
+# 2. 백엔드 (http://127.0.0.1:8000)
+cd PlanQuest_App\backend
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+
+# 3. 프론트엔드 (http://localhost:3000)
+cd PlanQuest_App\frontend
+npm start
 ```
 
----
-
-## 📚 추가 문서
-
-- `WEEK6_COMPLETE_D.md` — Week 6 D 역할 상세
-- `AGENT_ARCHITECTURE.md` — AI 에이전트 아키텍처
-- `IMPLEMENTATION_COMPLETE.md` — 초기 구현 보고서
-- `backend/integrations/README_연동가이드.md` — Google API OAuth 설정
+GPU가 없는 환경에서는 응답 생성에 30~60초가 걸릴 수 있습니다. Ollama 상태는 `GET /api/chat/health`로 확인할 수 있습니다.
 
 ---
 
-## 📝 라이선스
+## 9. API 명세
 
-캡스톤 프로젝트 — 학술 / 비상업 용도.
+### 채팅
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/chat` | 비스트리밍 응답 |
+| POST | `/api/chat/stream` | SSE 스트리밍 응답, 일정 생성 요청 시 DB 등록 |
+| GET | `/api/chat/health` | Ollama 연결 및 모델 상태 확인 |
+| POST | `/api/chat/setup-ollama` | Ollama 모델 준비 |
+
+### 습관 · 게임
+
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| GET / POST | `/api/habits` | 습관 목록 조회 / 생성 |
+| POST | `/api/habits/{id}/complete` | 완료 처리 및 하트 지급 |
+| DELETE | `/api/habits/{id}` | 습관 삭제 |
+| GET | `/api/trees` | 배치도의 나무 목록 |
+| POST | `/api/trees/{id}/harvest` | 하트 수확 |
+| GET | `/api/shop` | 상점 캐릭터 목록 |
+| POST | `/api/shop/{id}/buy` | 캐릭터 구매 |
+| GET / POST | `/api/placed-items` | 배치된 캐릭터 조회 / 배치 |
 
 ---
 
-**제작**: Plan-Quest 팀 (D 역할: AI 백엔드)
-**최종 업데이트**: 2026-05-13 (Week 6 완료)
+## 10. 팀 구성
+
+| 이름 | 담당 |
+|------|------|
+| 이용상 | 자연어 일정 등록 파이프라인(`__CREATE__` 태그, NLP 폴백), Gmail 컨텍스트 개선, LoRA 학습 데이터 파이프라인, 경쟁 서비스 분석 |
+| 안성현 | 루틴 관리 UI, Google Calendar/Gmail 연동, APScheduler 동기화, OAuth2, 보안 설계, pytest |
+| 손세환 | 하이브리드 RAG, 메모리 만료 및 민감정보 격리 |
+| 팀원 D | 프론트엔드, 게임 시스템(배치도, 캐릭터, 상점), 패키징 |
+
+---
+
+캡스톤 프로젝트 · 학술 및 비상업 용도
